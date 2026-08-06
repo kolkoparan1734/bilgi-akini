@@ -1,0 +1,5 @@
+backend/venv/
+backend/__pycache__/
+backend/bilgi_akini.db
+__pycache__/
+*.pyc

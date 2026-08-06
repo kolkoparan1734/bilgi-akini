@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Bilgi Akını — Aklınla Savaş, Bilginle Fetih Et</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ÜST BANDO -->
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="assets/logo-badge.png" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
+    </div>
+    <div class="stats">
+      <div class="stat gold-stat">
+        <span class="stat-icon">◈</span>
+        <span id="gold-count">0</span>
+      </div>
+      <div class="stat conquer-stat">
+        <span class="stat-icon">⚑</span>
+        <span id="conquer-count">0</span><span class="stat-sub" id="conquer-total">/8</span>
+      </div>
+      <div class="stat enemy-stat mp-only hidden">
+        <span class="stat-icon">⚔</span>
+        <span id="enemy-conquer-count">0</span>
+        <span class="stat-name" id="enemy-name"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- GİRİŞ EKRANI -->
+  <section id="login-screen" class="screen hero-screen">
+    <div class="login-card">
+      <img class="hero-logo" src="assets/logo-badge.png" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
+      <p class="login-eyebrow">Sefere çıkmadan önce</p>
+      <h2>Adını Söyle, Kumandan</h2>
+      <input id="username-input" type="text" placeholder="isim yaz..." maxlength="20" autocomplete="off">
+      <button id="start-btn" class="btn-primary">Sefere Başla</button>
+    </div>
+  </section>
+
+  <!-- MOD SEÇİM EKRANI -->
+  <section id="mode-screen" class="screen hidden hero-screen">
+    <div class="login-card">
+      <p class="login-eyebrow">Nasıl sefere çıkalım?</p>
+      <h2>Bir Mod Seç</h2>
+      <button id="solo-mode-btn" class="mode-btn mode-btn-solo">
+        <span class="mode-btn-icon">⚔</span>
+        <span class="mode-btn-text">
+          <span class="mode-btn-title">Tek Kişilik Sefer</span>
+          <span class="mode-btn-desc">Haritayı tek başına fethet</span>
+        </span>
+      </button>
+      <button id="duo-mode-btn" class="mode-btn mode-btn-duo">
+        <span class="mode-btn-icon">⚡</span>
+        <span class="mode-btn-text">
+          <span class="mode-btn-title">İki Kişilik Meydan Okuma</span>
+          <span class="mode-btn-desc">Bir arkadaşına gerçek zamanlı meydan oku</span>
+        </span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ODA EKRANI (2 KİŞİLİK) -->
+  <section id="room-screen" class="screen hidden hero-screen">
+    <div class="login-card">
+      <p class="login-eyebrow">İki Kişilik Meydan Okuma</p>
+      <h2>Oda Kur ya da Katıl</h2>
+
+      <div id="room-idle" class="room-block">
+        <button id="create-room-btn" class="btn-primary">Oda Kur</button>
+        <p class="room-or">veya</p>
+        <input id="join-code-input" type="text" placeholder="4 haneli oda kodu" maxlength="4" inputmode="numeric" autocomplete="off">
+        <button id="join-room-btn" class="btn-secondary">Katıl</button>
+        <p id="room-error" class="room-error hidden"></p>
+      </div>
+
+      <div id="room-waiting" class="room-block hidden">
+        <p class="room-wait-label">Oda kodun:</p>
+        <p id="room-code-display" class="room-code"></p>
+        <p class="room-wait-hint">Rakibin bu kodu girip katılmasını bekliyoruz...</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- HARİTA EKRANI -->
+  <section id="map-screen" class="screen hidden">
+    <div class="map-frame">
+      <div id="map" class="map"></div>
+    </div>
+    <p class="map-hint" id="map-hint">Bir bölgeye dokun, soruyu bil, fethet.</p>
+  </section>
+
+  <!-- SORU MODALI -->
+  <div id="quiz-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="quiz-card">
+      <div class="quiz-header">
+        <span id="quiz-region-name" class="quiz-region-name">Bölge</span>
+        <div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div>
+      </div>
+      <p id="quiz-text" class="quiz-text">Soru yükleniyor...</p>
+      <div id="quiz-options" class="quiz-options"></div>
+      <div id="quiz-feedback" class="quiz-feedback hidden"></div>
+    </div>
+  </div>
+
+  <!-- ZAFER EKRANI -->
+  <div id="victory-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="quiz-card victory-card">
+      <p class="login-eyebrow">Sefer Tamamlandı</p>
+      <h2>Harita Fethedildi!</h2>
+      <p class="victory-gold">Toplam Akınca: <span id="victory-gold">0</span> ◈</p>
+      <button id="restart-btn" class="btn-primary">Yeni Sefer</button>
+    </div>
+  </div>
+
+  <!-- MAÇ SONU EKRANI (2 KİŞİLİK) -->
+  <div id="match-over-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="quiz-card victory-card">
+      <p class="login-eyebrow">Meydan Okuma Bitti</p>
+      <h2 id="match-over-title">Sonuç</h2>
+      <p id="match-over-scores" class="victory-gold"></p>
+      <button id="match-restart-btn" class="btn-primary">Yeni Sefer</button>
+    </div>
+  </div>
+
+  <!-- RAKİP AYRILDI BİLDİRİMİ -->
+  <div id="opponent-left-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="quiz-card victory-card">
+      <p class="login-eyebrow">Bağlantı Koptu</p>
+      <h2>Rakip Ayrıldı</h2>
+      <p class="victory-gold">Maç sona erdi.</p>
+      <button id="opponent-left-btn" class="btn-primary">Yeni Sefer</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
