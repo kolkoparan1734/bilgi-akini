@@ -1,6 +1,6 @@
 /* ============================================
    BİLGİ AKINI — Design tokens
-   Tema: kutu tasarımı (turkuaz / mor / kırmızı)
+   Tema: dünya haritası / ahşap-altın kumandan teması
    ============================================ */
 :root {
   --teal: #3b91b2;
@@ -24,6 +24,12 @@
   --danger: var(--red);
   --danger-dark: var(--red-dark);
 
+  --wood: #6b4327;
+  --wood-dark: #3f2718;
+  --wood-light: #9a6b3f;
+  --gold: #e0b563;
+  --gold-bright: #f5d38a;
+
   --font-display: "Anton", sans-serif;
   --font-body: "Poppins", Arial, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
@@ -35,7 +41,7 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--teal-deep);
+  background: var(--wood-dark);
   font-family: var(--font-body);
   color: var(--white);
   overflow: hidden;
@@ -46,13 +52,46 @@ html, body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  max-width: 520px;
+  max-width: 980px;
   margin: 0 auto;
   position: relative;
-  background: var(--teal);
+  background: var(--teal-deep);
 }
 
 .hidden { display: none !important; }
+
+/* ---------------- YATAY EKRAN UYARISI ---------------- */
+.rotate-prompt {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: var(--wood-dark);
+  color: var(--white);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+}
+.rotate-inner { max-width: 280px; }
+.rotate-icon {
+  font-size: 2.6rem;
+  margin-bottom: 12px;
+  display: inline-block;
+  animation: rotate-hint 1.6s ease-in-out infinite;
+}
+.rotate-inner p {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+@keyframes rotate-hint {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-90deg); }
+}
+@media (orientation: portrait) {
+  .rotate-prompt { display: flex; }
+  #app { display: none; }
+}
 
 /* ---------------- TOPBAR ---------------- */
 .topbar {
@@ -60,8 +99,9 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  background: linear-gradient(180deg, var(--teal-deep) 0%, var(--teal-dark) 100%);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  background: linear-gradient(180deg, var(--wood-dark) 0%, var(--wood) 100%);
+  border-bottom: 3px solid var(--gold);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
   z-index: 5;
 }
 
@@ -78,14 +118,12 @@ html, body {
   font-weight: 700;
   padding: 5px 9px;
   border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.25);
-  color: var(--white);
+  border: 1px solid var(--gold);
+  color: var(--gold-bright);
+  background: rgba(0,0,0,0.25);
 }
-.gold-stat { background: rgba(255,255,255,0.14); }
-.conquer-stat { background: rgba(239,65,58,0.35); border-color: rgba(239,65,58,0.5); }
-.enemy-stat { background: rgba(111,76,158,0.4); border-color: rgba(111,76,158,0.6); }
 .stat-icon { font-size: 0.9rem; }
-.stat-sub { color: rgba(255,255,255,0.75); font-weight: 500; }
+.enemy-stat { border-color: var(--purple-light); color: var(--purple-bright); }
 .stat-name {
   font-family: var(--font-body);
   font-weight: 500;
@@ -111,11 +149,11 @@ html, body {
   justify-content: center;
   padding: 24px;
   background:
-    linear-gradient(180deg, rgba(28,74,92,0.90), rgba(28,74,92,0.96)),
-    url("assets/box-art.png") center 15% / cover no-repeat;
+    linear-gradient(180deg, rgba(28,74,92,0.12), rgba(28,74,92,0.28)),
+    url("assets/hero-login.png") center center / cover no-repeat;
 }
 
-/* ---------------- LOGIN / MOD / ODA KARTI ---------------- */
+/* ---------------- LOGIN KARTI ---------------- */
 .login-card {
   width: 100%;
   max-width: 320px;
@@ -291,109 +329,152 @@ html, body {
   color: var(--ink-soft);
 }
 
-/* ---------------- MAP ---------------- */
-#map-screen { padding: 14px 14px 8px; }
+/* ---------------- DÜNYA HARİTASI ---------------- */
+#map-screen { padding: 10px 10px 6px; }
 
 .map-frame {
   flex: 1;
   position: relative;
-  border-radius: 4px;
+  border-radius: 10px;
   overflow: hidden;
-  clip-path: polygon(
-    1% 3%, 12% 0%, 30% 1.5%, 55% 0%, 78% 1%, 99% 2%,
-    100% 20%, 98.5% 45%, 100% 70%, 99% 97%,
-    82% 100%, 60% 98.5%, 40% 100%, 18% 99%, 0% 97%,
-    1.5% 75%, 0% 50%, 1.5% 25%
-  );
-  background:
-    linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 40%),
-    repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 2px, transparent 2px, transparent 8px),
-    linear-gradient(160deg, var(--teal-dark), var(--teal-deep));
-  border: 3px solid var(--white);
+  background: #0e2430 url("assets/world-map.png") center center / cover no-repeat;
+  border: 4px solid var(--wood);
+  box-shadow: 0 0 0 2px var(--gold), inset 0 0 30px 8px rgba(0,0,0,0.45);
 }
 
 .map {
   position: absolute;
   inset: 0;
+  z-index: 2;
 }
 
-.region-marker {
+.compass-rose {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  color: var(--gold-bright);
+  opacity: 0.85;
+  z-index: 3;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
+  animation: spin 100s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------------- ÜLKE İŞARETLEYİCİLERİ ---------------- */
+.country-marker {
   position: absolute;
   transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   background: none;
   border: none;
   cursor: pointer;
   padding: 4px;
   -webkit-tap-highlight-color: transparent;
 }
-.region-marker:focus-visible .region-flag { outline: 2px solid var(--white); outline-offset: 2px; }
+.country-marker:focus-visible .country-badge { outline: 2px solid var(--white); outline-offset: 2px; }
 
-.region-flag {
-  width: 30px;
-  height: 30px;
+.country-badge {
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.95rem;
-  background: rgba(255,255,255,0.9);
-  color: var(--purple);
-  border: 2px solid var(--white);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.35);
-  transition: transform 0.15s ease, background 0.2s ease;
+  font-size: 0.85rem;
+  background: rgba(20,30,20,0.55);
+  color: var(--white);
+  border: 2px solid var(--gold-bright);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  transition: transform 0.15s ease;
 }
-.region-marker:active .region-flag { transform: scale(0.9); }
+.country-marker:active .country-badge { transform: scale(0.88); }
 
-.region-marker.conquered .region-flag {
+.country-marker.empty .country-badge {
+  background: rgba(20,30,20,0.35);
+  border-color: rgba(255,255,255,0.35);
+  opacity: 0.6;
+}
+
+.country-marker.available .country-badge {
+  border-color: var(--gold-bright);
+  animation: avail-pulse 1.8s ease-in-out infinite;
+}
+
+.country-marker.conquered .country-badge {
   background: linear-gradient(180deg, var(--red), var(--red-dark));
-  border-color: var(--white);
-  color: var(--white);
+  border-color: var(--gold-bright);
   animation: capture-pop 0.4s ease;
 }
 
-.region-marker.enemy .region-flag {
+.country-marker.conquered.enemy .country-badge {
   background: linear-gradient(180deg, var(--purple-light), var(--purple));
-  border-color: var(--white);
-  color: var(--white);
-  animation: capture-pop 0.4s ease;
 }
 
-.region-marker.locked .region-flag {
-  background: rgba(255,255,255,0.25);
-  border-color: var(--red);
-  color: var(--white);
+.country-marker.locked .country-badge {
+  background: rgba(150,150,150,0.5);
+  border-color: rgba(255,255,255,0.5);
   animation: locked-pulse 1s ease-in-out infinite;
-}
-
-.region-marker.enemy,
-.region-marker.locked {
   cursor: default;
 }
+@keyframes locked-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
 
+@keyframes avail-pulse {
+  0%, 100% { box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+  50% { box-shadow: 0 2px 5px rgba(0,0,0,0.5), 0 0 10px 3px rgba(245,211,138,0.75); }
+}
 @keyframes capture-pop {
   0% { transform: scale(1); }
   40% { transform: scale(1.35); }
   100% { transform: scale(1); }
 }
 
-@keyframes locked-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-
-.region-label {
+.country-label {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 0.62rem;
-  color: var(--ink);
-  background: rgba(255,255,255,0.92);
+  font-size: 0.58rem;
+  color: var(--wood-dark);
+  background: rgba(245,211,138,0.95);
+  border: 1px solid var(--wood);
   padding: 1px 5px;
   border-radius: 3px;
   white-space: nowrap;
+}
+
+/* ---------------- DÖNEM SEKMELERİ ---------------- */
+.era-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 4px;
+  justify-content: center;
+}
+.era-tab {
+  flex: 1;
+  max-width: 110px;
+  padding: 9px 6px;
+  border-radius: 8px;
+  border: 2px solid var(--wood-light);
+  background: linear-gradient(180deg, var(--wood), var(--wood-dark));
+  color: rgba(255,255,255,0.75);
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, color 0.15s ease;
+}
+.era-tab:active { transform: translateY(1px); }
+.era-tab.active {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  border-color: var(--gold-bright);
+  color: var(--wood-dark);
+  box-shadow: 0 2px 8px rgba(224,181,99,0.5);
 }
 
 .map-hint {
@@ -401,7 +482,52 @@ html, body {
   font-size: 0.75rem;
   color: rgba(255,255,255,0.85);
   font-style: italic;
-  margin: 8px 0 4px;
+  margin: 2px 0 4px;
+}
+
+/* ---------------- OLAY SEÇİM LİSTESİ ---------------- */
+.event-select-title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  color: var(--ink);
+  margin: 0 0 16px;
+  font-weight: 400;
+}
+.event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.event-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--teal-tint);
+  background: var(--teal-tint);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.event-item:active { transform: scale(0.98); }
+.event-item.conquered {
+  background: rgba(46,158,91,0.14);
+  border-color: var(--success);
+}
+.event-item-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1rem;
+  color: var(--purple);
+}
+.event-item-leader {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
 }
 
 /* ---------------- MODAL / QUIZ ---------------- */
@@ -427,6 +553,8 @@ html, body {
   padding: 20px 20px 26px;
   border-top: 4px solid var(--red);
   animation: slide-up 0.25s ease;
+  max-height: 88vh;
+  overflow-y: auto;
 }
 
 @keyframes slide-up {
@@ -436,10 +564,15 @@ html, body {
 
 .quiz-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.quiz-title-block {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
 }
 .quiz-region-name {
   font-family: var(--font-display);
@@ -448,8 +581,13 @@ html, body {
   color: var(--purple);
   white-space: nowrap;
 }
+.quiz-progress {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
 .timer-track {
-  flex: 1;
   height: 6px;
   border-radius: 4px;
   background: var(--teal-tint);
@@ -517,7 +655,7 @@ html, body {
 .quiz-feedback.win { background: rgba(46,158,91,0.14); color: var(--success); }
 .quiz-feedback.lose { background: rgba(239,65,58,0.12); color: var(--red-dark); }
 
-/* ---------------- VICTORY ---------------- */
+/* ---------------- SONUÇ / BOŞ BÖLGE ---------------- */
 .victory-card { text-align: center; border-radius: 20px; }
 .victory-gold {
   font-family: var(--font-mono);
@@ -528,8 +666,8 @@ html, body {
 
 /* ---------------- Reduced motion ---------------- */
 @media (prefers-reduced-motion: reduce) {
-  .region-marker.conquered .region-flag,
-  .region-marker.enemy .region-flag,
-  .region-marker.locked .region-flag { animation: none; }
+  .country-marker.conquered .country-badge,
+  .country-marker.available .country-badge,
+  .compass-rose,
   .quiz-card { animation: none; }
 }
