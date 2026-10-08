@@ -32,6 +32,7 @@ CREATE TABLE players (
     gold INT DEFAULT 200,
     conquered_count INT DEFAULT 0,
     best_score INT DEFAULT 0,
+    character_key VARCHAR(30) DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -17,6 +17,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit, join_room
+from sqlalchemy import inspect as sa_inspect, text as sa_text
 
 app = Flask(__name__)
 CORS(app)  # Mobil uygulama / farklı origin'lerden erişim için
@@ -28,6 +29,14 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", DEFAULT_S
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+# --- Kumandan (karakter) seçim mekaniği ---
+# Sadece kozmetik: oyunu etkilemez, sadece oyuncunun kimliğini süsler.
+# Frontend'deki CHARACTERS dizisiyle (game.js) anahtarlar birebir eşleşmeli.
+ALLOWED_CHARACTERS = {
+    "mete_han", "attila", "cengiz_han", "timur",
+    "iskender", "jul_sezar", "fatih", "napolyon",
+}
 
 
 # ---------------- MODELLER ----------------
@@ -85,6 +94,7 @@ class Player(db.Model):
     gold = db.Column(db.Integer, default=200)
     conquered_count = db.Column(db.Integer, default=0)
     best_score = db.Column(db.Integer, default=0)
+    character_key = db.Column(db.String(30), nullable=True)  # seçilen kumandan (kozmetik)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -127,7 +137,22 @@ def player_info(username):
         "username": player.username,
         "gold": player.gold,
         "conquered_count": player.conquered_count,
+        "character_key": player.character_key,
     })
+
+
+@app.route("/api/player/<username>/character", methods=["POST"])
+def set_player_character(username):
+    """Kumandan seçimini kaydeder. Sadece kozmetik — oyunu etkilemez."""
+    data = request.get_json(silent=True) or {}
+    character_key = (data.get("character_key") or "").strip()
+    if character_key not in ALLOWED_CHARACTERS:
+        return jsonify({"error": "Geçersiz kumandan"}), 400
+
+    player = get_or_create_player(username)
+    player.character_key = character_key
+    db.session.commit()
+    return jsonify({"character_key": player.character_key})
 
 
 @app.route("/api/eras", methods=["GET"])
@@ -366,9 +391,15 @@ def handle_join_room_request(data):
     room["sids"][username] = request.sid
     join_room(code)
 
+    characters = {}
+    for p_username in room["players"]:
+        p = Player.query.filter_by(username=p_username).first()
+        characters[p_username] = p.character_key if p else None
+
     emit("match_start", {
         "code": code,
         "players": room["players"],
+        "characters": characters,
         "events": all_events_state(room),
     }, room=code)
 
@@ -495,18 +526,20 @@ def handle_disconnect():
 # ---------------- SEED DATA ----------------
 
 def seed_data():
-    if Era.query.first():
-        return  # zaten dolu
-
-    eras = [
-        {"key": "antik", "name": "Antik", "order": 1},
-        {"key": "ortacag", "name": "Orta Çağ", "order": 2},
-        {"key": "yukselis", "name": "Yükseliş", "order": 3},
-        {"key": "modern", "name": "Modern", "order": 4},
-    ]
-    for e in eras:
-        db.session.add(Era(**e))
-    db.session.commit()
+    """Dönem/ülke/olay verisini doldurur. Idempotent: daha önce eklenmiş
+    dönem/ülke/olaylar atlanır, sadece eksik olanlar eklenir — böylece
+    içerik zamanla büyütülebilir, mevcut oyuncu ilerlemesi (gold, fetih
+    durumu) korunur, db'yi silmeye gerek kalmaz."""
+    if not Era.query.first():
+        eras = [
+            {"key": "antik", "name": "Antik", "order": 1},
+            {"key": "ortacag", "name": "Orta Çağ", "order": 2},
+            {"key": "yukselis", "name": "Yükseliş", "order": 3},
+            {"key": "modern", "name": "Modern", "order": 4},
+        ]
+        for e in eras:
+            db.session.add(Era(**e))
+        db.session.commit()
 
     era_by_key = {e.key: e for e in Era.query.all()}
 
@@ -514,27 +547,28 @@ def seed_data():
     # Kürate edilmiş 12 bölge — mobil ekranda sıkışmasın diye sayı sınırlı
     # tutuldu. Bazılarının bu ilk sürümde henüz olayı yok; tıklanınca
     # "yakında" mesajı alır, içerik zamanla eklenir.
-    countries = [
-        # Kuzey & Güney Amerika
-        {"key": "amerika", "name": "Amerika Birleşik Devletleri", "x": 14, "y": 32},
-        {"key": "meksika", "name": "Meksika", "x": 13, "y": 50},
-        {"key": "brezilya", "name": "Brezilya", "x": 28, "y": 66},
-        # Avrupa
-        {"key": "turkiye", "name": "Türkiye / Osmanlı", "x": 58, "y": 42},
-        {"key": "fransa", "name": "Fransa", "x": 46, "y": 30},
-        {"key": "almanya", "name": "Almanya", "x": 53, "y": 23},
-        {"key": "rusya", "name": "Rusya", "x": 68, "y": 15},
-        # Orta Doğu & Afrika
-        {"key": "misir", "name": "Mısır / Arap Yarımadası", "x": 57, "y": 52},
-        {"key": "iran", "name": "İran / Persler", "x": 67, "y": 44},
-        # Asya & Okyanusya
-        {"key": "cin", "name": "Çin", "x": 80, "y": 34},
-        {"key": "hindistan", "name": "Hindistan", "x": 71, "y": 50},
-        {"key": "japonya", "name": "Japonya", "x": 90, "y": 30},
-    ]
-    for c in countries:
-        db.session.add(Country(**c))
-    db.session.commit()
+    if not Country.query.first():
+        countries = [
+            # Kuzey & Güney Amerika
+            {"key": "amerika", "name": "Amerika Birleşik Devletleri", "x": 14, "y": 32},
+            {"key": "meksika", "name": "Meksika", "x": 13, "y": 50},
+            {"key": "brezilya", "name": "Brezilya", "x": 28, "y": 66},
+            # Avrupa
+            {"key": "turkiye", "name": "Türkiye / Osmanlı", "x": 58, "y": 42},
+            {"key": "fransa", "name": "Fransa", "x": 46, "y": 30},
+            {"key": "almanya", "name": "Almanya", "x": 53, "y": 23},
+            {"key": "rusya", "name": "Rusya", "x": 68, "y": 15},
+            # Orta Doğu & Afrika
+            {"key": "misir", "name": "Mısır / Arap Yarımadası", "x": 57, "y": 52},
+            {"key": "iran", "name": "İran / Persler", "x": 67, "y": 44},
+            # Asya & Okyanusya
+            {"key": "cin", "name": "Çin", "x": 80, "y": 34},
+            {"key": "hindistan", "name": "Hindistan", "x": 71, "y": 50},
+            {"key": "japonya", "name": "Japonya", "x": 90, "y": 30},
+        ]
+        for c in countries:
+            db.session.add(Country(**c))
+        db.session.commit()
 
     country_by_key = {c.key: c for c in Country.query.all()}
 
@@ -738,9 +772,479 @@ def seed_data():
                  "a": "İspanyolca", "b": "Portekizce", "c": "Fransızca", "d": "İtalyanca", "correct": "b"},
             ],
         },
+        # ---- Boş ülke×dönem hücrelerini dolduran yeni olaylar ----
+        {
+            "country": "amerika", "era": "antik",
+            "title": "Yerli Amerikan Medeniyetleri", "leader": "Kızılderili Kabileleri", "gold_reward": 70,
+            "questions": [
+                {"text": "Kuzey Amerika'nın en büyük yerli şehir-merkezlerinden Cahokia hangi nehir kıyısındaydı?",
+                 "a": "Mississippi", "b": "Missouri", "c": "Colorado", "d": "Rio Grande", "correct": "a"},
+                {"text": "Kuzey Amerika yerlilerine Avrupalılar tarafından hangi isim yaygın olarak verilmiştir?",
+                 "a": "Kızılderili", "b": "Aborjin", "c": "İnka", "d": "Maya", "correct": "a"},
+                {"text": "İroki Konfederasyonu klasik dönemde kaç kabileden oluşuyordu?",
+                 "a": "3", "b": "5", "c": "7", "d": "10", "correct": "b"},
+                {"text": "Büyük Ovalar'da yaşayan yerli halkların temel geçim kaynağı hangi hayvandı?",
+                 "a": "At", "b": "Bizon", "c": "Geyik", "d": "Koyun", "correct": "b"},
+            ],
+        },
+        {
+            "country": "amerika", "era": "ortacag",
+            "title": "Viking Keşifleri (Vinland)", "leader": "Leif Erikson", "gold_reward": 80,
+            "questions": [
+                {"text": "Kolomb'dan yaklaşık 500 yıl önce Kuzey Amerika kıyılarına ulaştığı düşünülen halk hangisidir?",
+                 "a": "Vikingler", "b": "Fenikeliler", "c": "Romalılar", "d": "Araplar", "correct": "a"},
+                {"text": "Vikinglerin Kuzey Amerika'da ulaştığı bölgeye verdikleri isim nedir?",
+                 "a": "Vinland", "b": "Groenland", "c": "Nova Scotia", "d": "Newfoundland", "correct": "a"},
+                {"text": "Vinland'a ulaştığı kabul edilen Viking kaşif kimdir?",
+                 "a": "Leif Erikson", "b": "Erik the Red", "c": "Ragnar Lodbrok", "d": "Rollo", "correct": "a"},
+                {"text": "Vikingler esas olarak hangi bölgeden yayılmışlardır?",
+                 "a": "İskandinavya", "b": "İber Yarımadası", "c": "Britanya Adaları", "d": "Kuzey Afrika", "correct": "a"},
+            ],
+        },
+        {
+            "country": "amerika", "era": "yukselis",
+            "title": "Amerika'nın Keşfi", "leader": "Kristof Kolomb", "gold_reward": 90,
+            "questions": [
+                {"text": "Kristof Kolomb Amerika kıtasına hangi yıl ayak bastı?",
+                 "a": "1492", "b": "1498", "c": "1500", "d": "1512", "correct": "a"},
+                {"text": "Kolomb hangi ülke adına sefere çıkmıştır?",
+                 "a": "Portekiz", "b": "İspanya", "c": "İngiltere", "d": "Fransa", "correct": "b"},
+                {"text": "Kolomb'un ilk ulaştığı toprakları hangi kıta zannettiği bilinir?",
+                 "a": "Afrika", "b": "Asya (Hindistan)", "c": "Avustralya", "d": "Antarktika", "correct": "b"},
+                {"text": "Amerika kıtasına adını veren kaşif kimdir?",
+                 "a": "Amerigo Vespucci", "b": "Vasco da Gama", "c": "Ferdinand Magellan", "d": "Juan Ponce de León", "correct": "a"},
+            ],
+        },
+        {
+            "country": "meksika", "era": "antik",
+            "title": "Maya Uygarlığı", "leader": "Maya Şehir Devletleri", "gold_reward": 70,
+            "questions": [
+                {"text": "Maya Uygarlığı esas olarak hangi bölgede gelişmiştir?",
+                 "a": "And Dağları", "b": "Orta Amerika (Yukatan)", "c": "Amazon Havzası", "d": "Kuzey Amerika Ovaları", "correct": "b"},
+                {"text": "Mayaların geliştirdiği ve sıfır kavramını içeren şey nedir?",
+                 "a": "Takvim ve sayı sistemi", "b": "Metal para", "c": "Tekerlek", "d": "Yazı çarkı", "correct": "a"},
+                {"text": "Ünlü Maya piramidi Chichen Itza hangi günümüz ülkesindedir?",
+                 "a": "Guatemala", "b": "Meksika", "c": "Honduras", "d": "Belize", "correct": "b"},
+                {"text": "Maya uygarlığı en çok hangi alanda ileri gitmiştir?",
+                 "a": "Astronomi ve takvim", "b": "Denizcilik", "c": "Demir işleme", "d": "Atçılık", "correct": "a"},
+            ],
+        },
+        {
+            "country": "meksika", "era": "ortacag",
+            "title": "Aztek İmparatorluğu'nun Doğuşu", "leader": "Tenoch", "gold_reward": 80,
+            "questions": [
+                {"text": "Aztekler başkentleri Tenochtitlan'ı hangi göl üzerinde kurmuşlardır?",
+                 "a": "Texcoco Gölü", "b": "Titicaca Gölü", "c": "Maracaibo Gölü", "d": "Managua Gölü", "correct": "a"},
+                {"text": "Aztek efsanesine göre şehrin kurulacağı yeri, kaktüs üzerinde ne yiyen bir kartal gösterir?",
+                 "a": "Balık", "b": "Yılan", "c": "Fare", "d": "Tavşan", "correct": "b"},
+                {"text": "Aztek toplumunda güneş tanrısına insan kurban etme geleneği hangi amaçla yapılırdı?",
+                 "a": "Güneşin doğmaya devam etmesi için", "b": "Savaş kazanmak için", "c": "Bereket için", "d": "Yağmur için", "correct": "a"},
+                {"text": "Aztek İmparatorluğu'nun kuruluşu yaklaşık hangi yüzyıla dayanır?",
+                 "a": "11. yüzyıl", "b": "14. yüzyıl", "c": "16. yüzyıl", "d": "9. yüzyıl", "correct": "b"},
+            ],
+        },
+        {
+            "country": "meksika", "era": "modern",
+            "title": "Meksika Devrimi", "leader": "Pancho Villa & Zapata", "gold_reward": 100,
+            "questions": [
+                {"text": "Meksika Devrimi hangi yıl başladı?",
+                 "a": "1910", "b": "1920", "c": "1900", "d": "1930", "correct": "a"},
+                {"text": "\"Toprak ve Özgürlük\" sloganıyla köylü hareketini yöneten devrimci kimdir?",
+                 "a": "Pancho Villa", "b": "Emiliano Zapata", "c": "Porfirio Díaz", "d": "Venustiano Carranza", "correct": "b"},
+                {"text": "Devrim öncesi Meksika'yı uzun süre diktatörlükle yöneten lider kimdir?",
+                 "a": "Porfirio Díaz", "b": "Santa Anna", "c": "Benito Juárez", "d": "Maximilian", "correct": "a"},
+                {"text": "Meksika Devrimi sonucunda kabul edilen ve sosyal hakları güvence altına alan belge nedir?",
+                 "a": "1917 Anayasası", "b": "Bağımsızlık Bildirgesi", "c": "Guadalupe Hidalgo Antlaşması", "d": "Plan de Ayala", "correct": "a"},
+            ],
+        },
+        {
+            "country": "brezilya", "era": "antik",
+            "title": "Amazon'un Yerli Halkları", "leader": "Tupi-Guarani Kabileleri", "gold_reward": 70,
+            "questions": [
+                {"text": "Portekizliler gelmeden önce Brezilya topraklarında en yaygın yerli halk grubu hangisidir?",
+                 "a": "Tupi-Guarani", "b": "Maya", "c": "İnka", "d": "Aztek", "correct": "a"},
+                {"text": "Amazon yağmur ormanlarında yaşayan yerli halkların temel geçim şekli nedir?",
+                 "a": "Avcılık-toplayıcılık ve tarım", "b": "Göçebe hayvancılık", "c": "Balıkçılık ve maden işletmeciliği", "d": "Ticaret kervanları", "correct": "a"},
+                {"text": "Brezilya'nın adı hangi ağaçtan gelmektedir?",
+                 "a": "Pau-brasil (Brezilya ağacı)", "b": "Kauçuk ağacı", "c": "Maun ağacı", "d": "Palmiye", "correct": "a"},
+                {"text": "Portekizliler Brezilya'ya ayak bastığında (1500) yerli nüfusun büyük kısmı hangi dil ailesine mensuptu?",
+                 "a": "Tupi", "b": "Nahuatl", "c": "Keçuva", "d": "Maya dilleri", "correct": "a"},
+            ],
+        },
+        {
+            "country": "brezilya", "era": "yukselis",
+            "title": "Portekiz Sömürgeciliği ve Şeker Çağı", "leader": "Vali-Genel", "gold_reward": 85,
+            "questions": [
+                {"text": "Brezilya'yı ilk kez keşfeden Portekizli denizci kimdir?",
+                 "a": "Pedro Álvares Cabral", "b": "Vasco da Gama", "c": "Bartolomeu Dias", "d": "Fernão de Magalhães", "correct": "a"},
+                {"text": "Sömürge döneminde Brezilya ekonomisinin temelini hangi ürün oluşturuyordu?",
+                 "a": "Kahve", "b": "Şeker kamışı", "c": "Kauçuk", "d": "Pamuk", "correct": "b"},
+                {"text": "Brezilya'ya Portekizliler tarafından hangi kıtadan köle emeği getirilmiştir?",
+                 "a": "Asya", "b": "Afrika", "c": "Avustralya", "d": "Kuzey Amerika", "correct": "b"},
+                {"text": "Brezilya, Portekiz'in hangi kıtadaki en büyük sömürgesiydi?",
+                 "a": "Afrika", "b": "Güney Amerika", "c": "Asya", "d": "Okyanusya", "correct": "b"},
+            ],
+        },
+        {
+            "country": "turkiye", "era": "antik",
+            "title": "Anadolu'nun Antik Uygarlıkları", "leader": "Hititler", "gold_reward": 75,
+            "questions": [
+                {"text": "Anadolu'da kurulan ve Mısır ile Kadeş Antlaşması'nı imzalayan antik uygarlık hangisidir?",
+                 "a": "Hititler", "b": "Frigyalılar", "c": "Lidyalılar", "d": "İyonlar", "correct": "a"},
+                {"text": "Tarihte bilinen ilk yazılı barış antlaşması olan Kadeş Antlaşması kimler arasında imzalanmıştır?",
+                 "a": "Hititler-Mısırlılar", "b": "Persler-Yunanlılar", "c": "Asurlular-Babilliler", "d": "Hititler-Asurlular", "correct": "a"},
+                {"text": "Parayı ilk kez icat ettiği kabul edilen Anadolu uygarlığı hangisidir?",
+                 "a": "Lidyalılar", "b": "Frigyalılar", "c": "Urartular", "d": "İyonlar", "correct": "a"},
+                {"text": "Efsanevi kral Midas'ın altına dokunuşuyla anılan Anadolu uygarlığı hangisidir?",
+                 "a": "Frigyalılar", "b": "Hititler", "c": "Lidyalılar", "d": "Karyalılar", "correct": "a"},
+            ],
+        },
+        {
+            "country": "fransa", "era": "antik",
+            "title": "Galya ve Roma Fransası", "leader": "Vercingetorix", "gold_reward": 70,
+            "questions": [
+                {"text": "Roma işgali öncesi bugünkü Fransa toprakları hangi isimle anılırdı?",
+                 "a": "Galya", "b": "Germanya", "c": "Britanya", "d": "İberya", "correct": "a"},
+                {"text": "Galyalıların Roma'ya karşı direnişini yöneten ünlü şef kimdir?",
+                 "a": "Vercingetorix", "b": "Asterix", "c": "Karl Martel", "d": "Klovis", "correct": "a"},
+                {"text": "Galya'yı fetheden Roma komutanı kimdir?",
+                 "a": "Jül Sezar", "b": "Augustus", "c": "Hannibal", "d": "Pompeius", "correct": "a"},
+                {"text": "Galya'nın Roma'ya kesin olarak boyun eğdiği kuşatma hangisidir?",
+                 "a": "Alesia Kuşatması", "b": "Cannae Savaşı", "c": "Actium Savaşı", "d": "Zama Savaşı", "correct": "a"},
+            ],
+        },
+        {
+            "country": "fransa", "era": "ortacag",
+            "title": "Yüzyıl Savaşları ve Jeanne d'Arc", "leader": "Jeanne d'Arc", "gold_reward": 85,
+            "questions": [
+                {"text": "İngiltere ile Fransa arasındaki Yüzyıl Savaşları toplamda yaklaşık kaç yıl sürmüştür?",
+                 "a": "100", "b": "50", "c": "150", "d": "30", "correct": "a"},
+                {"text": "Fransız ordularına önderlik ederek ülkesini kurtaran genç kız kahraman kimdir?",
+                 "a": "Jeanne d'Arc", "b": "Marie Antoinette", "c": "Katerina de Medici", "d": "Eleanor of Aquitaine", "correct": "a"},
+                {"text": "Jeanne d'Arc savaş sonunda hangi suçlamayla yakılarak idam edilmiştir?",
+                 "a": "Cadılık/sapkınlık", "b": "Vatana ihanet", "c": "Hırsızlık", "d": "Casusluk", "correct": "a"},
+                {"text": "Yüzyıl Savaşları hangi hanedanlar arasındaki taht iddiası yüzünden başlamıştır?",
+                 "a": "Plantagenet-Valois", "b": "Tudor-Stuart", "c": "Habsburg-Bourbon", "d": "Capet-Habsburg", "correct": "a"},
+            ],
+        },
+        {
+            "country": "fransa", "era": "modern",
+            "title": "Napolyon Dönemi", "leader": "Napolyon Bonapart", "gold_reward": 100,
+            "questions": [
+                {"text": "Napolyon Bonapart kendini hangi yıl Fransız İmparatoru ilan etmiştir?",
+                 "a": "1804", "b": "1789", "c": "1815", "d": "1799", "correct": "a"},
+                {"text": "Napolyon'un kesin yenilgiye uğradığı savaş hangisidir?",
+                 "a": "Waterloo", "b": "Austerlitz", "c": "Trafalgar", "d": "Leipzig", "correct": "a"},
+                {"text": "Napolyon son olarak hangi adaya sürgün edilmiştir?",
+                 "a": "Elba", "b": "Korsika", "c": "Sen Helena", "d": "Sicilya", "correct": "c"},
+                {"text": "Napolyon'un hazırlattığı ve modern hukukun temellerinden sayılan kanun hangisidir?",
+                 "a": "Code Civil (Napolyon Kanunu)", "b": "Magna Carta", "c": "Hammurabi Kanunları", "d": "Justinianus Kanunları", "correct": "a"},
+            ],
+        },
+        {
+            "country": "almanya", "era": "antik",
+            "title": "Germen Kabileleri ve Roma", "leader": "Arminius", "gold_reward": 70,
+            "questions": [
+                {"text": "Roma lejyonlarını Teutoburg Ormanı'nda yenen Germen lider kimdir?",
+                 "a": "Arminius", "b": "Attila", "c": "Alarik", "d": "Odoaker", "correct": "a"},
+                {"text": "Roma İmparatorluğu, Ren Nehri'nin doğusunu genel olarak neden kalıcı işgal edememiştir?",
+                 "a": "Germen kabilelerinin güçlü direnişi", "b": "İklim çok soğuk olduğu için", "c": "Bölgede değerli kaynak olmadığı için", "d": "Barış anlaşması yüzünden", "correct": "a"},
+                {"text": "Antik dönemde Germen kabilelerinin toplumsal yapısı genelde nasıldı?",
+                 "a": "Kabile/boy temelli, merkezi olmayan", "b": "Güçlü merkezi imparatorluk", "c": "Şehir devletleri", "d": "Göçebe imparatorluk", "correct": "a"},
+                {"text": "Roma kaynaklarında Germen kabileleri hakkında bilgi veren ünlü eser kime aittir?",
+                 "a": "Tacitus (Germania)", "b": "Herodot", "c": "Julius Sezar", "d": "Plinius", "correct": "a"},
+            ],
+        },
+        {
+            "country": "almanya", "era": "ortacag",
+            "title": "Kutsal Roma-Germen İmparatorluğu", "leader": "Şarlman / Otto", "gold_reward": 85,
+            "questions": [
+                {"text": "Kutsal Roma-Germen İmparatorluğu'nun kurucusu kabul edilen imparator kimdir?",
+                 "a": "Büyük Otto", "b": "Şarlman", "c": "Barbaros Friedrich", "d": "V. Karl", "correct": "b"},
+                {"text": "Şarlman hangi yılda Papa tarafından Roma İmparatoru olarak taçlandırılmıştır?",
+                 "a": "800", "b": "962", "c": "1000", "d": "1215", "correct": "a"},
+                {"text": "Kutsal Roma-Germen İmparatorluğu esas olarak hangi bölgeleri kapsıyordu?",
+                 "a": "Orta Avrupa (Almanya, Avusturya ve çevresi)", "b": "İber Yarımadası", "c": "Britanya Adaları", "d": "Balkanlar", "correct": "a"},
+                {"text": "Ortaçağ Almanya'sında imparatoru seçen soylulara ne ad verilirdi?",
+                 "a": "Prens-Seçmenler (Kurfürst)", "b": "Baronlar", "c": "Şövalyeler", "d": "Dükler Konseyi", "correct": "a"},
+            ],
+        },
+        {
+            "country": "almanya", "era": "yukselis",
+            "title": "Reform ve Otuz Yıl Savaşları", "leader": "Martin Luther", "gold_reward": 90,
+            "questions": [
+                {"text": "Reform hareketini başlatan ve 95 Tezi yayınlayan din adamı kimdir?",
+                 "a": "Martin Luther", "b": "Jean Calvin", "c": "Papa X. Leo", "d": "Erasmus", "correct": "a"},
+                {"text": "Otuz Yıl Savaşları hangi yüzyılda yaşanmıştır?",
+                 "a": "17. yüzyıl", "b": "16. yüzyıl", "c": "18. yüzyıl", "d": "15. yüzyıl", "correct": "a"},
+                {"text": "Otuz Yıl Savaşları'nı sona erdiren antlaşma hangisidir?",
+                 "a": "Vestfalya Antlaşması", "b": "Utrecht Antlaşması", "c": "Tilsit Antlaşması", "d": "Versay Antlaşması", "correct": "a"},
+                {"text": "Martin Luther'in Katolik Kilisesi'ne karşı en çok eleştirdiği uygulama neydi?",
+                 "a": "Endüljans (günah affı) satışı", "b": "Latince ayin", "c": "Manastır sistemi", "d": "Haçlı Seferleri", "correct": "a"},
+            ],
+        },
+        {
+            "country": "rusya", "era": "antik",
+            "title": "Bozkırın Antik Halkları: İskitler", "leader": "İskit Göçebeleri", "gold_reward": 70,
+            "questions": [
+                {"text": "Bugünkü Rusya bozkırlarında at ve okçulukla ünlenen antik göçebe halk hangisidir?",
+                 "a": "İskitler", "b": "Vikingler", "c": "Moğollar", "d": "Hunlar", "correct": "a"},
+                {"text": "İskitler hangi hayvanı evcilleştirerek savaş ve göçte ustaca kullanmışlardır?",
+                 "a": "At", "b": "Fil", "c": "Deve", "d": "Öküz", "correct": "a"},
+                {"text": "İskitlerin sanatında en çok görülen figür hangisidir?",
+                 "a": "Hayvan üslubu (kartal, geyik vb.)", "b": "İnsan heykelleri", "c": "Geometrik mozaikler", "d": "Dini simgeler", "correct": "a"},
+                {"text": "İskitler hakkında en çok bilgiyi veren antik Yunan tarihçi kimdir?",
+                 "a": "Herodot", "b": "Tukidides", "c": "Ksenophon", "d": "Plutarkhos", "correct": "a"},
+            ],
+        },
+        {
+            "country": "rusya", "era": "ortacag",
+            "title": "Kiev Rus Knezliği", "leader": "Vladimir", "gold_reward": 85,
+            "questions": [
+                {"text": "Rus devletinin ilk çekirdeği kabul edilen ortaçağ knezliği hangisidir?",
+                 "a": "Kiev Rus Knezliği", "b": "Moskova Knezliği", "c": "Novgorod Cumhuriyeti", "d": "Altın Orda", "correct": "a"},
+                {"text": "Rusya'yı Hristiyanlığı (Ortodoksluk) kabul etmeye yönelten Kiev knezi kimdir?",
+                 "a": "Vladimir", "b": "Yaroslav", "c": "İvan IV", "d": "İgor", "correct": "a"},
+                {"text": "Ortaçağda Rus knezliklerini uzun süre haraca bağlayan Moğol-Türk devleti hangisidir?",
+                 "a": "Altın Orda", "b": "Timur İmparatorluğu", "c": "Göktürk Kağanlığı", "d": "Selçuklu Devleti", "correct": "a"},
+                {"text": "\"Bütün Rusların Çarı\" unvanını ilk resmi kullanan hükümdar kimdir?",
+                 "a": "IV. İvan (Korkunç İvan)", "b": "Büyük Petro", "c": "Vladimir", "d": "Yaroslav", "correct": "a"},
+            ],
+        },
+        {
+            "country": "rusya", "era": "yukselis",
+            "title": "Büyük Petro ve Rusya'nın Modernleşmesi", "leader": "I. Petro", "gold_reward": 95,
+            "questions": [
+                {"text": "Rusya'yı Batılılaştırma politikalarıyla modernleştiren çar kimdir?",
+                 "a": "Büyük Petro", "b": "Büyük Katerina", "c": "IV. İvan", "d": "I. Aleksandr", "correct": "a"},
+                {"text": "Büyük Petro'nun Baltık kıyısında kurdurduğu ve başkent yaptığı şehir hangisidir?",
+                 "a": "St. Petersburg", "b": "Moskova", "c": "Kiev", "d": "Novgorod", "correct": "a"},
+                {"text": "Büyük Petro, İsveç'e karşı kazandığı hangi savaşla Rusya'yı büyük güç hâline getirmiştir?",
+                 "a": "Büyük Kuzey Savaşı", "b": "Kırım Savaşı", "c": "Yedi Yıl Savaşları", "d": "Napolyon Savaşları", "correct": "a"},
+                {"text": "Büyük Petro dönemi reformları özellikle hangi alanda yoğunlaşmıştır?",
+                 "a": "Ordu, denizcilik ve yönetim", "b": "Sadece din", "c": "Sadece tarım", "d": "Sadece sanat", "correct": "a"},
+            ],
+        },
+        {
+            "country": "misir", "era": "ortacag",
+            "title": "İslam Dönemi Mısır ve Memlükler", "leader": "Selahaddin Eyyubi / Memlükler", "gold_reward": 85,
+            "questions": [
+                {"text": "Haçlılara karşı Kudüs'ü geri alan ve Mısır'da Eyyubi Devleti'ni kuran komutan kimdir?",
+                 "a": "Selahaddin Eyyubi", "b": "Baybars", "c": "Kalavun", "d": "Turan Şah", "correct": "a"},
+                {"text": "Moğolları Ayn Calut Savaşı'nda durduran Mısır merkezli devlet hangisidir?",
+                 "a": "Memlük Devleti", "b": "Fatımi Devleti", "c": "Eyyubi Devleti", "d": "Tolunoğulları", "correct": "a"},
+                {"text": "Memlük Devleti hangi askerlerden oluşan bir yönetici sınıfa dayanıyordu?",
+                 "a": "Köle asıllı askerler (Memlükler)", "b": "Toprak sahibi soylular", "c": "Din adamları", "d": "Tüccarlar", "correct": "a"},
+                {"text": "Mısır'daki Memlük Devleti'ne son veren Osmanlı padişahı kimdir?",
+                 "a": "Yavuz Sultan Selim", "b": "Fatih Sultan Mehmed", "c": "Kanuni Sultan Süleyman", "d": "II. Bayezid", "correct": "a"},
+            ],
+        },
+        {
+            "country": "misir", "era": "yukselis",
+            "title": "Osmanlı Yönetiminde Mısır", "leader": "Kavalalı Mehmet Ali Paşa", "gold_reward": 90,
+            "questions": [
+                {"text": "Mısır, Osmanlı Devleti'ne hangi savaştan sonra katılmıştır?",
+                 "a": "Ridaniye Savaşı", "b": "Mercidabık Savaşı", "c": "Çaldıran Savaşı", "d": "Mohaç Savaşı", "correct": "a"},
+                {"text": "19. yüzyılda Mısır'da güçlü bir özerk yönetim kuran vali kimdir?",
+                 "a": "Kavalalı Mehmet Ali Paşa", "b": "Kölemenler", "c": "İbrahim Paşa", "d": "Tosun Paşa", "correct": "a"},
+                {"text": "Napolyon Bonapart Mısır'ı hangi yıl işgal etmiştir?",
+                 "a": "1798", "b": "1805", "c": "1789", "d": "1815", "correct": "a"},
+                {"text": "Süveyş Kanalı hangi yüzyılda açılmıştır?",
+                 "a": "19. yüzyıl", "b": "18. yüzyıl", "c": "20. yüzyıl", "d": "17. yüzyıl", "correct": "a"},
+            ],
+        },
+        {
+            "country": "misir", "era": "modern",
+            "title": "Modern Mısır ve Süveyş Krizi", "leader": "Cemal Abdünnasır", "gold_reward": 100,
+            "questions": [
+                {"text": "Süveyş Kanalı'nı millileştiren Mısır lideri kimdir?",
+                 "a": "Cemal Abdünnasır", "b": "Enver Sedat", "c": "Kral Faruk", "d": "Hüsnü Mübarek", "correct": "a"},
+                {"text": "Süveyş Krizi hangi yıl yaşanmıştır?",
+                 "a": "1956", "b": "1948", "c": "1967", "d": "1973", "correct": "a"},
+                {"text": "Mısır'da krallığı sona erdiren 1952 hareketi genel olarak ne olarak bilinir?",
+                 "a": "Hür Subaylar Devrimi", "b": "Nil Devrimi", "c": "Kahire Ayaklanması", "d": "Ekim Devrimi", "correct": "a"},
+                {"text": "İsrail ile Mısır arasında imzalanan ve barışı sağlayan antlaşma hangisidir?",
+                 "a": "Camp David Antlaşması", "b": "Oslo Antlaşması", "c": "Vestfalya Antlaşması", "d": "Sykes-Picot Antlaşması", "correct": "a"},
+            ],
+        },
+        {
+            "country": "iran", "era": "ortacag",
+            "title": "İslam Sonrası İran ve Selçuklular", "leader": "Büyük Selçuklu", "gold_reward": 85,
+            "questions": [
+                {"text": "İran coğrafyasında hüküm süren büyük Türk-İslam devleti hangisidir?",
+                 "a": "Büyük Selçuklu Devleti", "b": "Gazneliler", "c": "Harzemşahlar", "d": "Timurlular", "correct": "a"},
+                {"text": "Selçukluların İran'daki başkentlerinden biri hangi şehirdi?",
+                 "a": "İsfahan", "b": "Bağdat", "c": "Semerkant", "d": "Kahire", "correct": "a"},
+                {"text": "İranlı bilgin ve devlet adamı olarak ünlenen Selçuklu veziri kimdir?",
+                 "a": "Nizamülmülk", "b": "El-Harezmi", "c": "İbn-i Sina", "d": "Farabi", "correct": "a"},
+                {"text": "İran'ı istila eden ve büyük yıkıma yol açan Orta Asyalı fatih kimdir?",
+                 "a": "Cengiz Han", "b": "Attila", "c": "Timur", "d": "Babür", "correct": "a"},
+            ],
+        },
+        {
+            "country": "iran", "era": "yukselis",
+            "title": "Safevi Devleti", "leader": "Şah İsmail / Şah Abbas", "gold_reward": 90,
+            "questions": [
+                {"text": "İran'da Şiiliği devlet dini yapan hanedan hangisidir?",
+                 "a": "Safeviler", "b": "Selçuklular", "c": "Gazneliler", "d": "Timurlular", "correct": "a"},
+                {"text": "Safevi Devleti'nin kurucusu kimdir?",
+                 "a": "Şah İsmail", "b": "Şah Abbas", "c": "Nadir Şah", "d": "Şah Tahmasp", "correct": "a"},
+                {"text": "Safevi Devleti'ni en parlak dönemine ulaştıran hükümdar kimdir?",
+                 "a": "Şah Abbas", "b": "Şah İsmail", "c": "Şah Tahmasp", "d": "Şah Sultan Hüseyin", "correct": "a"},
+                {"text": "Safeviler'in başkenti İsfahan'ı hangi hükümdar imar etmiştir?",
+                 "a": "Şah Abbas", "b": "Şah İsmail", "c": "Nadir Şah", "d": "Fetih Ali Şah", "correct": "a"},
+            ],
+        },
+        {
+            "country": "iran", "era": "modern",
+            "title": "Modern İran ve Devrim", "leader": "Humeyni", "gold_reward": 100,
+            "questions": [
+                {"text": "1979 İran Devrimi'yle Şahlık rejimi yıkılıp yerine ne kurulmuştur?",
+                 "a": "İslam Cumhuriyeti", "b": "Sosyalist Cumhuriyet", "c": "Anayasal Monarşi", "d": "Askeri Cunta", "correct": "a"},
+                {"text": "1979 Devrimi'nin lideri kimdir?",
+                 "a": "Ayetullah Humeyni", "b": "Musaddık", "c": "Rıza Şah Pehlevi", "d": "Ali Hamaney", "correct": "a"},
+                {"text": "Devrim öncesi İran'ı yöneten son şah kimdir?",
+                 "a": "Muhammed Rıza Pehlevi", "b": "Rıza Şah", "c": "Nasırüddin Şah", "d": "Fetih Ali Şah", "correct": "a"},
+                {"text": "İran-Irak Savaşı hangi yıllar arasında yaşanmıştır?",
+                 "a": "1980-1988", "b": "1990-1991", "c": "1970-1975", "d": "1960-1965", "correct": "a"},
+            ],
+        },
+        {
+            "country": "cin", "era": "ortacag",
+            "title": "Tang ve Song Hanedanlıkları", "leader": "Tang İmparatorları", "gold_reward": 85,
+            "questions": [
+                {"text": "Çin tarihinde İpek Yolu ticaretinin ve kültürün doruk noktasına ulaştığı hanedan hangisidir?",
+                 "a": "Tang Hanedanı", "b": "Qin Hanedanı", "c": "Yuan Hanedanı", "d": "Ming Hanedanı", "correct": "a"},
+                {"text": "Matbaayı dünyada ilk kullanan uygarlıklardan biri Çin'de hangi dönemde gelişmiştir?",
+                 "a": "Song Hanedanı", "b": "Qin Hanedanı", "c": "Han Hanedanı", "d": "Zhou Hanedanı", "correct": "a"},
+                {"text": "Çin'i Moğol istilasından sonra yöneten ve Kubilay Han'ın kurduğu hanedan hangisidir?",
+                 "a": "Yuan Hanedanı", "b": "Ming Hanedanı", "c": "Tang Hanedanı", "d": "Qing Hanedanı", "correct": "a"},
+                {"text": "Barut, Çin'de ortaçağ döneminde ilk olarak hangi amaçla kullanılmıştır?",
+                 "a": "Ateşli oyunlar/fişek", "b": "Doğrudan silah", "c": "Madencilik", "d": "Tıbbi tedavi", "correct": "a"},
+            ],
+        },
+        {
+            "country": "cin", "era": "yukselis",
+            "title": "Ming Hanedanı ve Deniz Seferleri", "leader": "Zheng He", "gold_reward": 90,
+            "questions": [
+                {"text": "Ming Hanedanı döneminde büyük deniz seferleri düzenleyen ünlü Çinli amiral kimdir?",
+                 "a": "Zheng He", "b": "Kubilay Han", "c": "Konfüçyüs", "d": "Sun Tzu", "correct": "a"},
+                {"text": "Ming Hanedanı'nın başkentini taşıdığı ve Yasak Şehir'i inşa ettirdiği şehir hangisidir?",
+                 "a": "Pekin", "b": "Şanghay", "c": "Nanjing", "d": "Xi'an", "correct": "a"},
+                {"text": "Çin Seddi'nin bugünkü bilinen büyük kısmı hangi hanedan döneminde inşa/tahkim edilmiştir?",
+                 "a": "Ming Hanedanı", "b": "Qin Hanedanı", "c": "Han Hanedanı", "d": "Tang Hanedanı", "correct": "a"},
+                {"text": "Ming Hanedanı sonrasında Çin'i kim yönetmeye başlamıştır?",
+                 "a": "Mançu Qing Hanedanı", "b": "Moğol Yuan Hanedanı", "c": "Song Hanedanı", "d": "Cumhuriyet", "correct": "a"},
+            ],
+        },
+        {
+            "country": "cin", "era": "modern",
+            "title": "Modern Çin ve Halk Cumhuriyeti", "leader": "Mao Zedong", "gold_reward": 100,
+            "questions": [
+                {"text": "Çin Halk Cumhuriyeti hangi yıl kurulmuştur?",
+                 "a": "1949", "b": "1911", "c": "1937", "d": "1966", "correct": "a"},
+                {"text": "Çin Halk Cumhuriyeti'nin kurucu lideri kimdir?",
+                 "a": "Mao Zedong", "b": "Deng Xiaoping", "c": "Sun Yat-sen", "d": "Çan Kay Şek", "correct": "a"},
+                {"text": "Çin'de son imparatorluğu deviren 1911 hareketi ne olarak bilinir?",
+                 "a": "Xinhai Devrimi", "b": "Kültür Devrimi", "c": "Boxer Ayaklanması", "d": "Uzun Yürüyüş", "correct": "a"},
+                {"text": "Mao Zedong'un komünist güçlerinin kurtulduğu, tarihi 1934-35 geri çekilişine ne ad verilir?",
+                 "a": "Uzun Yürüyüş", "b": "Büyük Sıçrayış", "c": "Kültür Devrimi", "d": "Xinhai Devrimi", "correct": "a"},
+            ],
+        },
+        {
+            "country": "hindistan", "era": "antik",
+            "title": "İndus Vadisi ve Maurya İmparatorluğu", "leader": "İmparator Aşoka", "gold_reward": 75,
+            "questions": [
+                {"text": "Hindistan'daki en eski şehir uygarlıklarından biri hangi nehir vadisinde gelişmiştir?",
+                 "a": "İndus Vadisi", "b": "Ganj Vadisi", "c": "Nil Vadisi", "d": "Fırat Vadisi", "correct": "a"},
+                {"text": "Hindistan'ı büyük ölçüde birleştiren ve Budizmi yayan ünlü Maurya imparatoru kimdir?",
+                 "a": "Aşoka", "b": "Chandragupta", "c": "Ekber Şah", "d": "Babür", "correct": "a"},
+                {"text": "Hinduizm ve Budizm hangi kıtada doğmuş dinlerdendir?",
+                 "a": "Asya (Hindistan)", "b": "Afrika", "c": "Avrupa", "d": "Amerika", "correct": "a"},
+                {"text": "Antik Hindistan'da toplumu katı biçimde ayıran sosyal sistem nedir?",
+                 "a": "Kast sistemi", "b": "Feodal sistem", "c": "Kölelik sistemi", "d": "Loncalar", "correct": "a"},
+            ],
+        },
+        {
+            "country": "hindistan", "era": "yukselis",
+            "title": "Babür İmparatorluğu", "leader": "Babür / Ekber Şah", "gold_reward": 90,
+            "questions": [
+                {"text": "Hindistan'da güçlü Türk-Moğol kökenli imparatorluğu kuran hükümdar kimdir?",
+                 "a": "Babür", "b": "Aşoka", "c": "Ekber Şah", "d": "Timur", "correct": "a"},
+                {"text": "Babür İmparatorluğu'nun en parlak dönemini yaşatan hükümdar kimdir?",
+                 "a": "Ekber Şah", "b": "Babür", "c": "Cihangir", "d": "Evrengzib", "correct": "a"},
+                {"text": "Ünlü Tac Mahal, hangi Babür padişahı tarafından yaptırılmıştır?",
+                 "a": "Şah Cihan", "b": "Ekber Şah", "c": "Babür", "d": "Evrengzib", "correct": "a"},
+                {"text": "Babür İmparatorluğu'na son veren sömürgeci güç hangisidir?",
+                 "a": "İngiltere", "b": "Portekiz", "c": "Fransa", "d": "Hollanda", "correct": "a"},
+            ],
+        },
+        {
+            "country": "hindistan", "era": "modern",
+            "title": "Hindistan'ın Bağımsızlığı", "leader": "Mahatma Gandi", "gold_reward": 100,
+            "questions": [
+                {"text": "Hindistan'ı şiddet içermeyen direnişle bağımsızlığa taşıyan lider kimdir?",
+                 "a": "Mahatma Gandi", "b": "Cevahirlal Nehru", "c": "Muhammed Ali Cinnah", "d": "Subhas Chandra Bose", "correct": "a"},
+                {"text": "Hindistan İngiltere'den hangi yıl bağımsızlığını kazanmıştır?",
+                 "a": "1947", "b": "1919", "c": "1930", "d": "1950", "correct": "a"},
+                {"text": "Bağımsızlık sırasında Hindistan'dan ayrılarak kurulan Müslüman çoğunluklu ülke hangisidir?",
+                 "a": "Pakistan", "b": "Bangladeş", "c": "Afganistan", "d": "Nepal", "correct": "a"},
+                {"text": "Gandi'nin şiddetsiz direniş felsefesine verilen isim nedir?",
+                 "a": "Satyagraha", "b": "Cihat", "c": "Jihad", "d": "Swaraj Savaşı", "correct": "a"},
+            ],
+        },
+        {
+            "country": "japonya", "era": "antik",
+            "title": "Antik Japonya ve Yamato Dönemi", "leader": "Yamato Hanedanı", "gold_reward": 70,
+            "questions": [
+                {"text": "Japon imparatorluk hanedanının kökeni hangi antik döneme dayanır?",
+                 "a": "Yamato Dönemi", "b": "Heian Dönemi", "c": "Edo Dönemi", "d": "Meiji Dönemi", "correct": "a"},
+                {"text": "Japonya'nın geleneksel dini, doğa ve atalara tapınmayı içeren hangisidir?",
+                 "a": "Şintoizm", "b": "Budizm", "c": "Taoizm", "d": "Konfüçyüsçülük", "correct": "a"},
+                {"text": "Japon imparatorunun soyunun geldiğine inanılan tanrıça hangisidir?",
+                 "a": "Amaterasu (Güneş Tanrıçası)", "b": "İsis", "c": "Athena", "d": "Freya", "correct": "a"},
+                {"text": "Budizm Japonya'ya hangi komşu ülke/bölge üzerinden ulaşmıştır?",
+                 "a": "Kore ve Çin", "b": "Hindistan doğrudan", "c": "Moğolistan", "d": "Filipinler", "correct": "a"},
+            ],
+        },
+        {
+            "country": "japonya", "era": "yukselis",
+            "title": "Sengoku Dönemi ve Birleşme", "leader": "Oda Nobunaga / Tokugawa Ieyasu", "gold_reward": 90,
+            "questions": [
+                {"text": "Japonya'da derebeylerin sürekli savaştığı \"Savaşan Ülkeler\" dönemine ne ad verilir?",
+                 "a": "Sengoku Dönemi", "b": "Heian Dönemi", "c": "Edo Dönemi", "d": "Meiji Dönemi", "correct": "a"},
+                {"text": "Japonya'yı kesin olarak birleştirip Edo Şogunluğu'nu kuran lider kimdir?",
+                 "a": "Tokugawa Ieyasu", "b": "Oda Nobunaga", "c": "Toyotomi Hideyoshi", "d": "Minamoto Yoritomo", "correct": "a"},
+                {"text": "Japonya'yı ateşli silahlarla tanıştıran Avrupalı denizciler hangi ülkedendir?",
+                 "a": "Portekiz", "b": "İspanya", "c": "Hollanda", "d": "İngiltere", "correct": "a"},
+                {"text": "Edo Şogunluğu döneminde başkent işlevi gören şehir hangisidir?",
+                 "a": "Edo (bugünkü Tokyo)", "b": "Kyoto", "c": "Osaka", "d": "Nagasaki", "correct": "a"},
+            ],
+        },
+        {
+            "country": "japonya", "era": "modern",
+            "title": "Meiji Restorasyonu ve Modern Japonya", "leader": "Meiji İmparatoru", "gold_reward": 100,
+            "questions": [
+                {"text": "Japonya'yı hızla modernleştiren ve Batılılaşmayı başlatan siyasi hareket nedir?",
+                 "a": "Meiji Restorasyonu", "b": "Sengoku Reformu", "c": "Edo Devrimi", "d": "Taisho Reformu", "correct": "a"},
+                {"text": "Meiji Restorasyonu hangi yıl gerçekleşmiştir?",
+                 "a": "1868", "b": "1900", "c": "1853", "d": "1912", "correct": "a"},
+                {"text": "Japonya'yı dış dünyaya zorla açan Amerikalı komutan kimdir?",
+                 "a": "Commodore Matthew Perry", "b": "Douglas MacArthur", "c": "Ulysses Grant", "d": "Theodore Roosevelt", "correct": "a"},
+                {"text": "II. Dünya Savaşı'nda Japonya'yı teslim olmaya zorlayan olay nedir?",
+                 "a": "Hiroşima ve Nagazaki'ye atom bombası atılması", "b": "Pearl Harbor saldırısı", "c": "Midway Deniz Savaşı", "d": "Okinawa Kuşatması", "correct": "a"},
+            ],
+        },
     ]
 
+    existing = {
+        (e.country_id, e.era_id, e.title) for e in HistoricalEvent.query.all()
+    }
+
     for ev in events:
+        key = (country_by_key[ev["country"]].id, era_by_key[ev["era"]].id, ev["title"])
+        if key in existing:
+            continue  # bu olay zaten eklenmiş, tekrar ekleme
         event = HistoricalEvent(
             country_id=country_by_key[ev["country"]].id,
             era_id=era_by_key[ev["era"]].id,
@@ -759,8 +1263,24 @@ def seed_data():
     db.session.commit()
 
 
+def ensure_schema_migrations():
+    """db.create_all() zaten var olan tabloları değiştirmez; bu yüzden
+    daha önceden oluşmuş bir bilgi_akini.db dosyasına sonradan eklenen
+    kolonları (örn. character_key) burada elle ekliyoruz. Kolon zaten
+    varsa hiçbir şey yapmaz — güvenle tekrar tekrar çalıştırılabilir."""
+    inspector = sa_inspect(db.engine)
+    if "players" not in inspector.get_table_names():
+        return
+    existing_cols = {c["name"] for c in inspector.get_columns("players")}
+    if "character_key" not in existing_cols:
+        with db.engine.connect() as conn:
+            conn.execute(sa_text("ALTER TABLE players ADD COLUMN character_key VARCHAR(30)"))
+            conn.commit()
+
+
 with app.app_context():
     db.create_all()
+    ensure_schema_migrations()
     seed_data()
 
 

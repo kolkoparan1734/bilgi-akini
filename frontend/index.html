@@ -6,7 +6,7 @@
 <title>Bilgi Akını — Aklınla Savaş, Bilginle Fetih Et</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=11">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3f2718">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -28,6 +28,9 @@
       <img class="brand-logo" src="assets/logo-badge.png" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
     </div>
     <div class="stats">
+      <div class="stat character-stat hidden" id="character-stat" title="">
+        <span class="stat-icon" id="character-badge-icon">🎖</span>
+      </div>
       <div class="stat gold-stat">
         <span class="stat-icon">◈</span>
         <span id="gold-count">0</span>
@@ -41,6 +44,9 @@
         <span id="enemy-conquer-count">0</span>
         <span class="stat-name" id="enemy-name"></span>
       </div>
+      <button id="music-toggle-btn" class="stat music-toggle" aria-label="Savaş müziğini aç/kapat" type="button">
+        <span id="music-icon" class="stat-icon">🔊</span>
+      </button>
     </div>
   </header>
 
@@ -52,6 +58,15 @@
       <h2>Adını Söyle, Kumandan</h2>
       <input id="username-input" type="text" placeholder="isim yaz..." maxlength="20" autocomplete="off">
       <button id="start-btn" class="btn-primary">Dünyayı Fethet</button>
+    </div>
+  </section>
+
+  <!-- KUMANDAN (KARAKTER) SEÇİM EKRANI -->
+  <section id="character-screen" class="screen hidden hero-screen">
+    <div class="character-select-card">
+      <p class="login-eyebrow">Sefere çıkmadan önce</p>
+      <h2>Kumandanını Seç</h2>
+      <div class="character-grid" id="character-grid"></div>
     </div>
   </section>
 
@@ -191,6 +206,6 @@
 
 </div>
 
-<script src="game.js?v=7"></script>
+<script src="game.js?v=10"></script>
 </body>
 </html>
