@@ -136,6 +136,30 @@ def build_hero():
     save_webp(im, "hero-login.webp", 78, max_w=1920)
 
 
+# Giriş / seçim ekranı arka planları. Orijinal JPG'ler yedek olarak
+# frontend/assets/ içinde kalır; WebP hedefi 400-600 KB, en fazla 1920 px.
+BACKGROUNDS = ["arkaplan-giris", "arkaplan-secim"]
+
+
+def build_backgrounds():
+    for name in BACKGROUNDS:
+        im = Image.open(os.path.join(OUT, name + ".jpg")).convert("RGB")
+        im = im.resize((1920, round(im.height * 1920 / im.width)), Image.LANCZOS)
+        path = os.path.join(OUT, name + ".webp")
+        # 400-600 KB aralığına düşen en yüksek kaliteyi bul
+        chosen = None
+        for q in range(95, 59, -3):
+            im.save(path, "WEBP", quality=q, method=6)
+            size_kb = os.path.getsize(path) // 1024
+            if size_kb <= 600:
+                chosen = q
+                break
+        print(f"{name}.webp".ljust(33) + f"{im.size[0]}x{im.size[1]}  q{chosen}  {os.path.getsize(path) // 1024} KB")
+        # Ekran görselden genişse sol boşluğu dolduran küçük, bulanık kopya
+        small = im.resize((480, round(im.height * 480 / im.width)), Image.LANCZOS).filter(ImageFilter.GaussianBlur(10))
+        small.save(os.path.join(OUT, name + "-blur.webp"), "WEBP", quality=70, method=6)
+
+
 def build_logo_and_icons():
     logo = Image.open(src("logo-badge.png")).convert("RGBA")
     # Logonun teal zeminini saydam yap (kahverengi üst barda kutu gibi durmasın).
@@ -228,8 +252,13 @@ def build_characters():
 
 
 if __name__ == "__main__":
+    import sys
+    if sys.argv[1:] == ["arkaplan"]:  # sadece arka planları üret (hızlı)
+        build_backgrounds()
+        sys.exit(0)
     move_originals()
     build_map()
     build_hero()
     build_logo_and_icons()
     build_characters()
+    build_backgrounds()

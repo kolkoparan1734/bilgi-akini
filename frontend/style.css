@@ -361,7 +361,12 @@ h2 {
 }
 #app[data-view="hero"] .brand,
 #app[data-view="hero"] .stat:not(.icon-btn) { display: none !important; }
-#app[data-view="hero"] .stats { flex-direction: column; }
+/* Menü ekranlarında sağda okçu durur: ikonları onun üstüne yığmamak için
+   sadece müzik (+ masaüstünde tam ekran) kalır, sıralama mod ekranında var. */
+#app[data-view="hero"] #leaderboard-btn { display: none !important; }
+@media (pointer: coarse) {
+  #app[data-view="hero"] #fullscreen-btn { display: none !important; }
+}
 #app[data-view="hero"] .icon-btn { background: rgba(42,25,15,0.7); }
 
 /* ---------------- EKRANLAR + GEÇİŞLER ---------------- */
@@ -389,38 +394,120 @@ h2 {
   to { opacity: 0; transform: translateY(-8px) scale(0.99); }
 }
 
-/* Giriş ekranlarının ortak arka planı: yavaşça yakınlaşıp kayan "Ken Burns" hareketi */
+/* ---------------- GİRİŞ / SEÇİM ARKA PLANLARI ----------------
+   İki görselde de atlı okçu sağda, harita solda. Görsel her zaman sağa
+   yaslanır ve ekran yüksekliğine oturur; böylece okçu hiçbir ekran oranında
+   kesilmez. Ekran görselden genişse (örn. 844x390) soldaki boşluğu aynı
+   görselin bulanık kopyası doldurur, keskin görsel ona yumuşakça karışır.
+   Giriş <-> seçim arasında 0.6 sn'lik crossfade. */
+:root {
+  --bg-ratio: 1.7914; /* 2576 / 1438 */
+  /* okçunun ekranda kapladığı genişlik (görselin sağdaki ~%39'u); kartlar
+     bunun soluna yerleşir */
+  --rider-w: min(45vw, calc(100vh * var(--bg-ratio) * 0.39));
+  --rider-w: min(45vw, calc(100dvh * var(--bg-ratio) * 0.39));
+}
 .hero-bg {
   position: absolute;
-  inset: -4%;
-  background: url("assets/hero-login.webp") center center / cover no-repeat;
-  animation: ken-burns 26s ease-in-out infinite alternate;
-  will-change: transform;
+  inset: 0;
   z-index: 0;
+  overflow: hidden;
   pointer-events: none;
+  background: var(--teal-deep);
+  transition: opacity 0.6s ease;
 }
-.hero-bg::after {
+#app:not([data-view="hero"]) .hero-bg { opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s linear 0.3s; }
+#app:not([data-view="hero"]) .hero-bg * { animation-play-state: paused; }
+.hero-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  background-position: left center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+.hero-layer::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 55%, rgba(16,40,50,0) 30%, rgba(16,40,50,0.55) 100%);
+  background-position: right center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transform-origin: right center;
+  animation: ken-burns 28s ease-in-out infinite alternate;
+  will-change: transform;
 }
-#app:not([data-view="hero"]) .hero-bg { display: none; }
+.bg-giris { background-image: url("assets/arkaplan-giris-blur.webp"); }
+.bg-giris::after { background-image: url("assets/arkaplan-giris.webp"); }
+.bg-secim { background-image: url("assets/arkaplan-secim-blur.webp"); }
+.bg-secim::after { background-image: url("assets/arkaplan-secim.webp"); }
+#app[data-bg="giris"] .bg-giris,
+#app[data-bg="secim"] .bg-secim { opacity: 1; }
+@media (min-aspect-ratio: 2576/1438) {
+  .hero-layer::after {
+    left: auto;
+    width: calc(100vh * var(--bg-ratio));
+    width: calc(100dvh * var(--bg-ratio));
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14%);
+    mask-image: linear-gradient(to right, transparent 0, #000 14%);
+  }
+}
 @keyframes ken-burns {
-  from { transform: scale(1) translate(0, 0); }
-  to { transform: scale(1.08) translate(-1.5%, -1%); }
+  from { transform: scale(1); }
+  to { transform: scale(1.05); }
+}
+/* kartın durduğu sol taraf hafifçe kararır, kenarlarda yumuşak vinyet;
+   okçunun olduğu sağ taraf ve renkler canlı kalır */
+.hero-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(10,16,20,0.42) 0%, rgba(10,16,20,0.22) 38%, rgba(10,16,20,0) 60%),
+    radial-gradient(ellipse 125% 110% at 60% 45%, transparent 55%, rgba(8,10,12,0.45) 100%);
+}
+
+/* Yavaşça yükselen altın toz / kıvılcımlar (sadece transform + opacity) */
+.hero-particles { position: absolute; inset: 0; overflow: hidden; }
+.spark {
+  position: absolute;
+  bottom: -12px;
+  width: var(--s, 4px);
+  height: var(--s, 4px);
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff6cf 0%, #f5c35a 45%, rgba(245,195,90,0) 72%);
+  opacity: 0;
+  animation: spark-rise var(--d, 12s) linear var(--delay, 0s) infinite;
+  will-change: transform, opacity;
+}
+@keyframes spark-rise {
+  0% { transform: translate(0, 0); opacity: 0; }
+  12% { opacity: var(--o, 0.8); }
+  50% { transform: translate(var(--dx, 20px), -55vh); opacity: var(--o, 0.8); }
+  65% { opacity: calc(var(--o, 0.8) * 0.4); }
+  80% { opacity: var(--o, 0.8); }
+  100% { transform: translate(calc(var(--dx, 20px) * -0.6), -110vh); opacity: 0; }
 }
 
 .hero-screen {
   align-items: center;
   justify-content: center;
+  /* sağda okçu: kartlar onun soluna, kalan alanın ortasına yerleşir */
   padding:
     max(10px, var(--safe-t))
-    calc(max(var(--gutter), var(--safe-r)) + 3.5rem)
+    max(calc(var(--gutter) + 3.5rem), var(--rider-w), var(--safe-r))
     max(10px, var(--safe-b))
-    calc(max(var(--gutter), var(--safe-l)) + 3.5rem);
+    max(var(--gutter), var(--safe-l));
   overflow-y: auto;
   z-index: 1;
+}
+/* Giriş/menü kartları: hafif parşömen tonu, ince altın kenarlık, hafif gölge */
+.hero-screen .panel {
+  background:
+    radial-gradient(ellipse at 30% 0%, rgba(255,255,255,0.55), transparent 60%),
+    linear-gradient(180deg, #fbf2dc 0%, #f3e3c0 100%);
+  border: 1.5px solid var(--gold);
+  box-shadow: 0 10px 26px rgba(15,8,3,0.38), inset 0 0 0 1px rgba(255,255,255,0.5), inset 0 0 36px rgba(150,100,40,0.12);
 }
 
 /* ---------------- GİRİŞ ---------------- */
@@ -430,7 +517,6 @@ h2 {
   align-items: center;
   gap: clamp(6px, 2.5vh, 18px);
   width: min(26rem, 100%);
-  margin-top: 6vh;
 }
 .login-note {
   margin: 10px 0 0;
@@ -499,6 +585,7 @@ h2 {
 /* ---------------- KUMANDAN SEÇİMİ ---------------- */
 .character-panel {
   width: min(48rem, 100%);
+  container-type: inline-size;
   text-align: center;
   padding: clamp(10px, 3vh, 24px) clamp(10px, 2vw, 22px);
 }
@@ -587,6 +674,13 @@ h2 {
   font-size: clamp(0.58rem, 2.6vh, 0.85rem);
   color: var(--ink-soft);
   line-height: 1.2;
+}
+
+/* okçuya yer açmak için kart daraldığında: unvanları gizle, isimleri küçült */
+@container (max-width: 520px) {
+  .character-title { display: none; }
+  .character-name { font-size: 0.8rem; }
+  .character-grid { gap: 6px; }
 }
 
 /* Kumandan seçilince kısa "savaş sözü" sahnesi */
@@ -1605,5 +1699,6 @@ h2 {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .hero-bg { animation: none; }
+  .hero-layer::after { animation: none; }
+  .hero-particles { display: none; }
 }

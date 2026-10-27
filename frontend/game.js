@@ -603,6 +603,9 @@ function showScreen(next) {
   const prev = currentScreen;
   currentScreen = next;
   el.app.dataset.view = next === el.mapScreen ? "map" : "hero";
+  // giriş ekranı kendi arka planını, diğer menü ekranları seçim arka planını
+  // kullanır; değişim CSS'te 0.6 sn'lik crossfade
+  if (next !== el.mapScreen) el.app.dataset.bg = next === el.loginScreen ? "giris" : "secim";
   if (prev) {
     prev.classList.remove("entering");
     prev.classList.add("leaving");
@@ -616,6 +619,25 @@ function showScreen(next) {
   next.classList.add("entering");
   setTimeout(() => next.classList.remove("entering"), 420);
 }
+
+// Giriş/menü arka planındaki altın kıvılcımlar: birkaç düzine küçük nokta,
+// sadece CSS transform/opacity animasyonu (telefonda daha az parça).
+(function spawnSparks() {
+  const host = document.getElementById("hero-particles");
+  if (!host || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const count = window.matchMedia("(pointer: coarse)").matches ? 12 : 22;
+  for (let i = 0; i < count; i++) {
+    const s = document.createElement("span");
+    s.className = "spark";
+    s.style.left = (Math.random() * 100).toFixed(1) + "%";
+    s.style.setProperty("--s", (2 + Math.random() * 4).toFixed(1) + "px");
+    s.style.setProperty("--d", (10 + Math.random() * 10).toFixed(1) + "s");
+    s.style.setProperty("--delay", (-Math.random() * 20).toFixed(1) + "s");
+    s.style.setProperty("--dx", (Math.random() * 80 - 40).toFixed(0) + "px");
+    s.style.setProperty("--o", (0.45 + Math.random() * 0.5).toFixed(2));
+    host.appendChild(s);
+  }
+})();
 
 function openModal(modal) {
   clearTimeout(modal._closeTimer);
