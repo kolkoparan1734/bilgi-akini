@@ -249,6 +249,29 @@ function playSfxConquer() {
   });
 }
 
+// Osmanlı/Türkiye fethedildiğinde çalan, mehter esintili kısa bir ezgi.
+// Telifli bir kayıt kullanmıyoruz — zurna+davul hissi veren kendi sentezimiz.
+function playMehterFanfare() {
+  if (!music.ctx) return;
+  const t = music.ctx.currentTime;
+  const noteDur = 0.16;
+  const melody = [392.00, 392.00, 440.00, 466.16, 440.00, 392.00, 349.23, 392.00]; // G4 G4 A4 Bb4 A4 G4 F4 G4
+  melody.forEach((freq, i) => {
+    const nt = t + i * noteDur;
+    playTone(nt, { freq, duration: noteDur * 0.95, gain: 0.22, type: "sawtooth" }); // zurna hissi
+    playTone(nt, { freq: 75, endFreq: 38, duration: noteDur * 0.7, gain: 0.2, type: "sine" }); // davul
+  });
+  const end = t + melody.length * noteDur;
+  playTone(end, { freq: 523.25, duration: 0.4, gain: 0.26, type: "sawtooth" });
+  playTone(end, { freq: 60, endFreq: 30, duration: 0.5, gain: 0.3, type: "sine" });
+  playTone(end, { freq: 3200, duration: 0.3, gain: 0.05, type: "triangle" }); // zil parıltısı
+}
+
+function playConquestCelebration(country) {
+  if (country && country.key === "turkiye") playMehterFanfare();
+  else playSfxConquer();
+}
+
 // ---------- Konfeti (fetih kutlaması) ----------
 const CONFETTI_COLORS = ["#ef413a", "#f5d38a", "#6f4c9e", "#3fbd73", "#3b91b2", "#ffffff"];
 
@@ -839,10 +862,8 @@ async function handleAnswerSolo(chosenKey) {
   const isLast = state.qIndex === event.questions.length - 1;
 
   setTimeout(() => {
-    if (!check.correct) {
-      finishSoloEvent(false);
-    } else if (isLast) {
-      finishSoloEvent(true);
+    if (!check.correct || isLast) {
+      finishSoloEvent();
     } else {
       state.qIndex += 1;
       renderQuizQuestion();
@@ -883,7 +904,7 @@ async function finishSoloEvent() {
         : `+${result.gold_reward} akınca kazandın.`;
       if (!result.already_conquered) {
         resultCard.classList.add("celebrate");
-        playSfxConquer();
+        playConquestCelebration(state.activeCountry);
         spawnConfetti();
       }
     } else {
@@ -931,7 +952,7 @@ function finishDuoEvent(correct, correctOption, goldReward) {
     state.gold += goldReward;
     el.quizFeedback.textContent = `Fetih tamam! +${goldReward} akınca kazandın.`;
     el.quizFeedback.classList.add("win");
-    playSfxConquer();
+    playConquestCelebration(state.activeCountry);
     spawnConfetti();
   } else {
     el.quizFeedback.textContent = state.lastChosenKey
