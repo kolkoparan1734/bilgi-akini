@@ -44,7 +44,7 @@ def move_originals():
                 os.remove(a)
 
 
-def fill_row_gradient(im, box):
+def fill_row_gradient(im, box, blur=6):
     """box içini her satırda sol ve sağ kenar renkleri arasında doğrusal
     geçişle doldurur — düz/degrade zemindeki baskılı bir öğeyi silmek için."""
     x0, y0, x1, y1 = box
@@ -56,8 +56,41 @@ def fill_row_gradient(im, box):
             t = (x - x0) / w
             px[x, y] = tuple(int(left[c] * (1 - t) + right[c] * t) for c in range(3))
     # sert dikiş kalmasın diye bölgeyi hafifçe yumuşat
-    region = im.crop(box).filter(ImageFilter.GaussianBlur(6))
+    region = im.crop(box).filter(ImageFilter.GaussianBlur(blur))
     im.paste(region, box[:2])
+
+
+def fill_coons(im, box, feather=24, blur=10):
+    """box içini dört kenarındaki renklerden (yatay + dikey geçişin birleşimi,
+    "Coons yaması") doldurur; çizgi/leke bırakmadan çevresine kaynaşır.
+    Kenarlar yumuşak maskeyle harmanlanır."""
+    x0, y0, x1, y1 = box
+    src_px = im.load()
+    w, h = x1 - x0, y1 - y0
+    top = [src_px[x0 + i, y0 - 1] for i in range(w)]
+    bottom = [src_px[x0 + i, y1] for i in range(w)]
+    left = [src_px[x0 - 1, y0 + j] for j in range(h)]
+    right = [src_px[x1, y0 + j] for j in range(h)]
+    c00, c10, c01, c11 = src_px[x0 - 1, y0 - 1], src_px[x1, y0 - 1], src_px[x0 - 1, y1], src_px[x1, y1]
+    patch = Image.new("RGB", (w, h))
+    pp = patch.load()
+    for j in range(h):
+        v = j / (h - 1)
+        for i in range(w):
+            u = i / (w - 1)
+            px = []
+            for c in range(3):
+                horiz = left[j][c] * (1 - u) + right[j][c] * u
+                vert = top[i][c] * (1 - v) + bottom[i][c] * v
+                bil = (c00[c] * (1 - u) * (1 - v) + c10[c] * u * (1 - v)
+                       + c01[c] * (1 - u) * v + c11[c] * u * v)
+                px.append(max(0, min(255, int(horiz + vert - bil))))
+            pp[i, j] = tuple(px)
+    patch = patch.filter(ImageFilter.GaussianBlur(blur))
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rectangle((feather, feather, w - feather, h - feather), fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(feather / 2))
+    im.paste(patch, (x0, y0), mask)
 
 
 def patch_from(im, dst_box, src_offset_y, feather=40):
@@ -96,6 +129,10 @@ def build_hero():
     im = Image.open(src("hero-login.png")).convert("RGB")
     # Sol üstte baskılı duran logoyu sil; oyun kendi (animasyonlu) logosunu koyar.
     fill_row_gradient(im, (180, 112, 1268, 474))
+    # Ortadaki baskılı örnek giriş kartını da sil (ekran geçişlerinde ve geniş
+    # ekranda arkadan görünmesin); zemin, çevresindeki renklerle doldurulur.
+    W, H = im.size
+    fill_coons(im, (int(W * 0.375), int(H * 0.33), int(W * 0.625), int(H * 0.79)), feather=30, blur=22)
     save_webp(im, "hero-login.webp", 78, max_w=1920)
 
 
@@ -144,13 +181,50 @@ def build_logo_and_icons():
         print("icons/" + name)
 
 
+def clear_fake_checkerboard(im):
+    """Portrelerin etrafına gömülmüş gri-beyaz "sahte saydamlık" desenini
+    gerçekten saydam yapar. Kenarlardan başlayan bir taşma (flood fill) ile
+    sadece dışarıdan ulaşılabilen açık gri/beyaz pikseller silinir; portrenin
+    içindeki parlak zırh vb. koyu kalkan zeminiyle çevrili olduğu için korunur."""
+    w, h = im.size
+    px = im.load()
+
+    def is_bg(x, y):
+        r, g, b, a = px[x, y]
+        if a < 20:
+            return True
+        return max(r, g, b) - min(r, g, b) < 22 and min(r, g, b) > 150
+
+    seen = bytearray(w * h)
+    stack = [(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for y in range(h) for x in (0, w - 1)]
+    while stack:
+        x, y = stack.pop()
+        i = y * w + x
+        if seen[i] or not is_bg(x, y):
+            continue
+        seen[i] = 1
+        px[x, y] = (0, 0, 0, 0)
+        if x > 0: stack.append((x - 1, y))
+        if x < w - 1: stack.append((x + 1, y))
+        if y > 0: stack.append((x, y - 1))
+        if y < h - 1: stack.append((x, y + 1))
+    return im
+
+
 def build_characters():
     for f in sorted(os.listdir(os.path.join(SRC, "characters"))):
         if not f.endswith(".png"):
             continue
         im = Image.open(src(os.path.join("characters", f))).convert("RGBA")
-        im = im.resize((256, 256), Image.LANCZOS)
-        save_webp(im, os.path.join("characters", f.replace(".png", ".webp")), 82)
+        im = clear_fake_checkerboard(im)
+        # Kalkan biçimli portreyi kare kırp: genişlik kadar kare, üstten hizalı
+        # (yüzler üst kısımda) — dairesel çerçevede yüz büyük ve ortada görünür.
+        l, t, r, b = im.getchannel("A").point(lambda a: 255 if a > 40 else 0).getbbox()
+        side = r - l
+        square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        square.alpha_composite(im.crop((l, t, r, min(b, t + side))), (0, 0))
+        square = square.resize((256, 256), Image.LANCZOS)
+        save_webp(square, os.path.join("characters", f.replace(".png", ".webp")), 82)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,14 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Bilgi Akını — Aklınla Savaş, Bilginle Fetih Et</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Bilgi Akını — Aklınla Savaş, Bilginle Fethet</title>
 <link rel="stylesheet" href="fonts.css?v=1">
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=20">
 <link rel="icon" type="image/png" href="assets/icons/icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3f2718">
+<link rel="preload" as="image" href="assets/hero-login.webp">
 <script src="vendor/socket.io.min.js"></script>
 <script src="config.js"></script>
 </head>
@@ -23,7 +24,7 @@
 
 <!-- SUNUCU BAĞLANTI HATASI -->
 <div id="server-error" class="server-error hidden" role="alertdialog" aria-labelledby="server-error-title">
-  <div class="server-error-card">
+  <div class="panel server-error-card">
     <div class="server-error-icon">⚠</div>
     <h2 id="server-error-title">Sunucuya Bağlanılamadı</h2>
     <p id="server-error-text">Oyun sunucusu çalışmıyor ya da bu cihaz ona ulaşamıyor.</p>
@@ -39,31 +40,41 @@
 <!-- BAĞLANTI KOPTU BANDI (2 kişilik mod) -->
 <div id="conn-banner" class="conn-banner hidden">Bağlantı koptu, yeniden bağlanılıyor…</div>
 
-<div id="app">
+<div id="app" data-view="hero">
 
-  <!-- ÜST BANDO -->
+  <!-- Giriş ekranlarının ortak, hafifçe hareket eden arka planı -->
+  <div class="hero-bg" aria-hidden="true"></div>
+
+  <!-- ÜST BANT -->
   <header class="topbar">
     <div class="brand">
-      <img class="brand-logo" src="assets/logo-badge.webp" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
+      <img class="brand-logo" src="assets/logo-badge.webp" alt="Bilgi Akını">
     </div>
     <div class="stats">
+      <div class="stat timer-stat hidden" id="match-timer-stat" aria-label="Kalan maç süresi">
+        <span class="stat-icon">⏱</span>
+        <span id="match-timer">5:00</span>
+      </div>
       <div class="stat character-stat hidden" id="character-stat" title="">
         <span class="stat-icon" id="character-badge-icon">🎖</span>
       </div>
-      <div class="stat gold-stat">
+      <div class="stat gold-stat" id="gold-stat" aria-label="Altın">
         <span class="stat-icon">◈</span>
         <span id="gold-count">0</span>
       </div>
-      <div class="stat conquer-stat">
+      <div class="stat conquer-stat" id="conquer-stat" aria-label="Fethedilen olay">
         <span class="stat-icon">⚑</span>
         <span id="conquer-count">0</span>
       </div>
-      <div class="stat enemy-stat mp-only hidden">
-        <span class="stat-icon">⚔</span>
+      <div class="stat enemy-stat hidden" aria-label="Rakibin fethettiği olay">
+        <span class="stat-icon enemy-portrait" id="enemy-portrait">⚔</span>
         <span id="enemy-conquer-count">0</span>
         <span class="stat-name" id="enemy-name"></span>
       </div>
-      <button id="music-toggle-btn" class="stat music-toggle" aria-label="Savaş müziğini aç/kapat" type="button">
+      <button id="leaderboard-btn" class="stat icon-btn" aria-label="Kumandanlar Sıralaması" type="button">
+        <span class="stat-icon">🏆</span>
+      </button>
+      <button id="music-toggle-btn" class="stat icon-btn music-toggle" aria-label="Müziği aç/kapat" type="button">
         <span id="music-icon" class="stat-icon">🔊</span>
       </button>
     </div>
@@ -71,166 +82,217 @@
 
   <!-- GİRİŞ EKRANI -->
   <section id="login-screen" class="screen hero-screen">
-    <div class="login-card">
-      <img class="hero-logo" src="assets/logo-badge.webp" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
-      <p class="login-eyebrow">Sefere çıkmadan önce</p>
-      <h2>Adını Söyle, Kumandan</h2>
-      <input id="username-input" type="text" placeholder="isim yaz..." maxlength="20" autocomplete="off">
-      <button id="start-btn" class="btn-primary">Dünyayı Fethet</button>
+    <div class="login-stack">
+      <div class="logo-wrap">
+        <img class="hero-logo" src="assets/logo-badge.webp" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
+      </div>
+      <div class="panel login-card">
+        <p class="eyebrow">Sefere çıkmadan önce</p>
+        <h2>Adını Söyle, Kumandan</h2>
+        <input id="username-input" type="text" placeholder="isim yaz..." maxlength="20" autocomplete="off" enterkeyhint="go">
+        <button id="start-btn" class="btn-primary btn-hero" type="button"><span>Dünyayı Fethet</span></button>
+      </div>
     </div>
   </section>
 
   <!-- KUMANDAN (KARAKTER) SEÇİM EKRANI -->
   <section id="character-screen" class="screen hidden hero-screen">
-    <div class="character-select-card">
+    <div class="panel character-panel">
       <button id="character-back-btn" class="back-btn" type="button" aria-label="Geri">‹ Geri</button>
-      <p class="login-eyebrow">Sefere çıkmadan önce</p>
+      <p class="eyebrow">Sefere çıkmadan önce</p>
       <h2>Kumandanını Seç</h2>
       <div class="character-grid" id="character-grid"></div>
+    </div>
+    <div id="battle-cry" class="battle-cry hidden" aria-live="assertive">
+      <div class="battle-cry-inner">
+        <div class="character-icon battle-cry-portrait" id="battle-cry-portrait"></div>
+        <div class="battle-cry-name" id="battle-cry-name"></div>
+        <p class="battle-cry-quote" id="battle-cry-quote"></p>
+      </div>
     </div>
   </section>
 
   <!-- MOD SEÇİM EKRANI -->
   <section id="mode-screen" class="screen hidden hero-screen">
-    <div class="login-card">
+    <div class="panel menu-card">
       <button id="mode-back-btn" class="back-btn" type="button" aria-label="Geri">‹ Geri</button>
-      <p class="login-eyebrow">Nasıl sefere çıkalım?</p>
+      <p class="eyebrow">Nasıl sefere çıkalım?</p>
       <h2>Bir Mod Seç</h2>
-      <button id="solo-mode-btn" class="mode-btn mode-btn-solo">
-        <span class="mode-btn-icon">⚔</span>
-        <span class="mode-btn-text">
-          <span class="mode-btn-title">Tek Kişilik Sefer</span>
-          <span class="mode-btn-desc">Dünyayı tek başına fethet</span>
-        </span>
-      </button>
-      <button id="duo-mode-btn" class="mode-btn mode-btn-duo">
-        <span class="mode-btn-icon">⚡</span>
-        <span class="mode-btn-text">
-          <span class="mode-btn-title">İki Kişilik Meydan Okuma</span>
-          <span class="mode-btn-desc">Bir arkadaşına gerçek zamanlı meydan oku</span>
-        </span>
-      </button>
+      <div class="mode-list">
+        <button id="solo-mode-btn" class="mode-btn mode-btn-solo" type="button">
+          <span class="mode-btn-icon">⚔</span>
+          <span class="mode-btn-text">
+            <span class="mode-btn-title">Tek Kişilik Sefer</span>
+            <span class="mode-btn-desc">Dünyayı tek başına fethet</span>
+          </span>
+        </button>
+        <button id="duo-mode-btn" class="mode-btn mode-btn-duo" type="button">
+          <span class="mode-btn-icon">⚡</span>
+          <span class="mode-btn-text">
+            <span class="mode-btn-title">İki Kişilik Meydan Okuma</span>
+            <span class="mode-btn-desc">Bir arkadaşına gerçek zamanlı meydan oku</span>
+          </span>
+        </button>
+      </div>
+      <button id="mode-leaderboard-btn" class="btn-secondary" type="button">🏆 Kumandanlar Sıralaması</button>
     </div>
   </section>
 
   <!-- ODA EKRANI (2 KİŞİLİK) -->
   <section id="room-screen" class="screen hidden hero-screen">
-    <div class="login-card">
+    <div class="panel menu-card room-card">
       <button id="room-back-btn" class="back-btn" type="button" aria-label="Geri">‹ Geri</button>
-      <p class="login-eyebrow">İki Kişilik Meydan Okuma</p>
+      <p class="eyebrow">İki Kişilik Meydan Okuma</p>
       <h2>Oda Kur ya da Katıl</h2>
 
       <div id="room-idle" class="room-block">
-        <button id="create-room-btn" class="btn-primary">Oda Kur</button>
-        <p class="room-or">veya</p>
-        <input id="join-code-input" type="text" placeholder="4 haneli oda kodu" maxlength="4" inputmode="numeric" autocomplete="off">
-        <button id="join-room-btn" class="btn-secondary">Katıl</button>
+        <p class="room-label">Hangi dönemde savaşalım? <span class="room-sub">(5 dakika)</span></p>
+        <div class="era-picker" id="era-picker"></div>
+        <button id="create-room-btn" class="btn-primary" type="button">Oda Kur</button>
+        <p class="room-or">veya bir odaya katıl</p>
+        <div class="join-row">
+          <input id="join-code-input" type="text" placeholder="oda kodu" maxlength="4" inputmode="numeric" autocomplete="off" enterkeyhint="go">
+          <button id="join-room-btn" class="btn-secondary" type="button">Katıl</button>
+        </div>
         <p id="room-error" class="room-error hidden"></p>
       </div>
 
       <div id="room-waiting" class="room-block hidden">
-        <p class="room-wait-label">Oda kodun:</p>
+        <p class="room-wait-label">Oda kodun</p>
         <p id="room-code-display" class="room-code"></p>
-        <p class="room-wait-hint">Rakibin bu kodu girip katılmasını bekliyoruz...</p>
+        <p class="room-wait-era" id="room-wait-era"></p>
+        <p class="room-wait-hint" id="room-wait-hint">Rakibin bu kodu girip katılmasını bekliyoruz…</p>
+        <div class="waiting-dots" aria-hidden="true"><span></span><span></span><span></span></div>
       </div>
     </div>
   </section>
 
   <!-- HARİTA EKRANI (DÜNYA) -->
   <section id="map-screen" class="screen hidden">
+    <aside class="map-rail">
+      <div class="era-progress" id="era-progress">
+        <span class="era-progress-label" id="era-progress-label">Dönem</span>
+        <strong class="era-progress-count" id="era-progress-count">0/0</strong>
+        <div class="progress-track"><div class="progress-fill" id="era-progress-fill"></div></div>
+        <span class="era-progress-sub">fethedildi</span>
+      </div>
+      <div class="era-tabs" id="era-tabs"></div>
+      <p class="map-hint" id="map-hint">Bir ülkeye dokun, tarihi olayı fethet.</p>
+      <button id="map-menu-btn" class="rail-btn" type="button">‹ Menü</button>
+    </aside>
     <div class="map-frame">
-      <div class="map-stage">
+      <div class="map-stage" id="map-stage">
         <img class="map-img" src="assets/world-map.webp" alt="" draggable="false">
         <div id="map" class="map"></div>
       </div>
-      <svg class="compass-rose" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
-        <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="1"/>
-        <path d="M20 4 L23 18 L20 20 L17 18 Z" fill="currentColor"/>
-        <path d="M20 36 L23 22 L20 20 L17 22 Z" fill="currentColor" opacity="0.5"/>
-        <path d="M4 20 L18 17 L20 20 L18 23 Z" fill="currentColor" opacity="0.5"/>
-        <path d="M36 20 L22 17 L20 20 L22 23 Z" fill="currentColor" opacity="0.5"/>
-      </svg>
     </div>
-
-    <div class="era-tabs" id="era-tabs"></div>
-
-    <p class="map-hint" id="map-hint">Bir ülkeye dokun, tarihi olayı fethet.</p>
   </section>
 
   <!-- OLAY SEÇİM MODALI (bir ülkede birden fazla olay varsa) -->
-  <div id="event-select-modal" class="modal hidden">
+  <div id="event-select-modal" class="modal hidden" data-dismiss="event-select-close">
     <div class="modal-backdrop"></div>
-    <div class="quiz-card">
-      <p class="login-eyebrow" id="event-select-country">Ülke</p>
-      <h2 class="event-select-title">Bir Olay Seç</h2>
+    <div class="panel modal-card">
+      <p class="eyebrow" id="event-select-country">Ülke</p>
+      <h2>Bir Olay Seç</h2>
       <div id="event-list" class="event-list"></div>
-      <button id="event-select-close" class="btn-secondary">Kapat</button>
+      <button id="event-select-close" class="btn-secondary" type="button">Kapat</button>
     </div>
   </div>
 
   <!-- BOŞ BÖLGE BİLDİRİMİ -->
-  <div id="empty-modal" class="modal hidden">
+  <div id="empty-modal" class="modal hidden" data-dismiss="empty-close-btn">
     <div class="modal-backdrop"></div>
-    <div class="quiz-card victory-card">
-      <p class="login-eyebrow">Yakında</p>
+    <div class="panel modal-card center">
+      <p class="eyebrow">Yakında</p>
       <h2 id="empty-country-name">Bu Bölge</h2>
-      <p class="victory-gold">Bu dönemde bu bölge için henüz bir tarihi olay eklenmedi.</p>
-      <button id="empty-close-btn" class="btn-primary">Tamam</button>
+      <p class="modal-text">Bu dönemde bu bölge için henüz bir tarihi olay eklenmedi.</p>
+      <button id="empty-close-btn" class="btn-primary" type="button">Tamam</button>
     </div>
   </div>
 
   <!-- SORU MODALI -->
-  <div id="quiz-modal" class="modal hidden">
+  <div id="quiz-modal" class="modal quiz-modal hidden">
     <div class="modal-backdrop"></div>
-    <div class="quiz-card">
+    <div class="panel quiz-card" id="quiz-card">
       <div class="quiz-header">
-        <div class="quiz-title-block">
-          <span id="quiz-event-title" class="quiz-region-name">Olay</span>
-          <span id="quiz-progress" class="quiz-progress">Soru 1/4</span>
-        </div>
-        <div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div>
+        <span id="quiz-event-title" class="quiz-region-name">Olay</span>
+        <span id="streak-badge" class="streak-badge hidden">🔥 3x SERİ</span>
+        <span id="quiz-progress" class="quiz-progress">Soru 1/4</span>
+      </div>
+      <div class="timer-row">
+        <div class="timer-track" id="timer-track"><div id="timer-fill" class="timer-fill"></div></div>
+        <span class="timer-num" id="timer-num">15</span>
       </div>
       <p id="quiz-text" class="quiz-text">Soru yükleniyor...</p>
       <div id="quiz-options" class="quiz-options"></div>
       <div id="quiz-feedback" class="quiz-feedback hidden"></div>
+      <div id="streak-flash" class="streak-flash hidden"></div>
     </div>
   </div>
 
   <!-- FETİH SONUCU -->
-  <div id="result-modal" class="modal hidden">
+  <div id="result-modal" class="modal hidden" data-dismiss="result-close-btn">
     <div class="modal-backdrop"></div>
-    <div class="quiz-card victory-card">
-      <p class="login-eyebrow" id="result-eyebrow">Sefer Sonucu</p>
+    <div class="panel modal-card center result-card" id="result-card">
+      <div class="result-rays" aria-hidden="true"></div>
+      <div class="result-emblem" id="result-emblem" aria-hidden="true">⚑</div>
+      <p class="eyebrow" id="result-eyebrow">Sefer Sonucu</p>
       <h2 id="result-title">Fetih Tamam!</h2>
-      <p class="victory-gold" id="result-detail"></p>
-      <button id="result-close-btn" class="btn-primary">Devam Et</button>
+      <p class="modal-text" id="result-detail"></p>
+      <div class="reward-rows" id="reward-rows"></div>
+      <button id="result-close-btn" class="btn-primary" type="button">Devam Et</button>
+    </div>
+  </div>
+
+  <!-- DÖNEM FETHEDİLDİ (TEK KİŞİLİK) -->
+  <div id="era-modal" class="modal era-modal hidden" data-dismiss="era-close-btn">
+    <div class="modal-backdrop"></div>
+    <div class="era-card">
+      <div class="era-rays" aria-hidden="true"></div>
+      <p class="eyebrow era-eyebrow">Dönem Fethedildi</p>
+      <div class="character-icon era-portrait" id="era-portrait"></div>
+      <h2 class="era-title" id="era-title">Orta Çağ</h2>
+      <p class="era-detail" id="era-detail"></p>
+      <button id="era-close-btn" class="btn-primary btn-hero" type="button"><span>Sefere Devam</span></button>
+    </div>
+  </div>
+
+  <!-- KUMANDANLAR SIRALAMASI -->
+  <div id="leaderboard-modal" class="modal hidden" data-dismiss="leaderboard-close-btn">
+    <div class="modal-backdrop"></div>
+    <div class="panel modal-card leaderboard-card">
+      <p class="eyebrow">Şan Defteri</p>
+      <h2>Kumandanlar Sıralaması</h2>
+      <ol id="leaderboard-list" class="leaderboard-list"></ol>
+      <button id="leaderboard-close-btn" class="btn-secondary" type="button">Kapat</button>
     </div>
   </div>
 
   <!-- MAÇ SONU EKRANI (2 KİŞİLİK) -->
-  <div id="match-over-modal" class="modal hidden">
+  <div id="match-over-modal" class="modal hidden" data-dismiss="match-restart-btn">
     <div class="modal-backdrop"></div>
-    <div class="quiz-card victory-card">
-      <p class="login-eyebrow">Meydan Okuma Bitti</p>
+    <div class="panel modal-card center result-card" id="match-over-card">
+      <div class="result-rays" aria-hidden="true"></div>
+      <p class="eyebrow" id="match-over-reason">Meydan Okuma Bitti</p>
       <h2 id="match-over-title">Sonuç</h2>
-      <p id="match-over-scores" class="victory-gold"></p>
-      <button id="match-restart-btn" class="btn-primary">Yeni Sefer</button>
+      <div class="versus" id="match-over-versus"></div>
+      <button id="match-restart-btn" class="btn-primary" type="button">Yeni Sefer</button>
     </div>
   </div>
 
   <!-- RAKİP AYRILDI BİLDİRİMİ -->
-  <div id="opponent-left-modal" class="modal hidden">
+  <div id="opponent-left-modal" class="modal hidden" data-dismiss="opponent-left-btn">
     <div class="modal-backdrop"></div>
-    <div class="quiz-card victory-card">
-      <p class="login-eyebrow">Bağlantı Koptu</p>
+    <div class="panel modal-card center">
+      <p class="eyebrow">Bağlantı Koptu</p>
       <h2>Rakip Ayrıldı</h2>
-      <p class="victory-gold">Maç sona erdi.</p>
-      <button id="opponent-left-btn" class="btn-primary">Yeni Sefer</button>
+      <p class="modal-text">Maç sona erdi.</p>
+      <button id="opponent-left-btn" class="btn-primary" type="button">Yeni Sefer</button>
     </div>
   </div>
 
 </div>
 
-<script src="game.js?v=12"></script>
+<script src="game.js?v=20"></script>
 </body>
 </html>

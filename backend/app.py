@@ -11,6 +11,7 @@ MySQL'e geçmek için DATABASE_URL ortam değişkenini ayarla, örn:
 
 import os
 import random
+import time
 from datetime import datetime
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -124,6 +125,38 @@ def get_or_create_player(username):
 
 def conquered_event_ids(player):
     return {p.event_id for p in PlayerEventProgress.query.filter_by(player_id=player.id)}
+
+
+# --- Hız ve seri bonusları ---
+# Olayın taban ödülü (gold_reward) değişmez; bunlar fetih başarılı olunca
+# üstüne eklenir. Hızlı cevap: kalan süreye göre soru başına 0-10 altın.
+# Seri: art arda 3. doğru cevaptan itibaren her doğru cevap +5 altın.
+QUESTION_TIME = 15
+SPEED_BONUS_MAX = 10
+STREAK_MIN = 3
+STREAK_BONUS = 5
+WRONG_PENALTY = 20
+
+
+def speed_bonus(seconds_left):
+    try:
+        t = float(seconds_left)
+    except (TypeError, ValueError):
+        return 0
+    t = max(0.0, min(float(QUESTION_TIME), t))
+    return round(t / QUESTION_TIME * SPEED_BONUS_MAX)
+
+
+def streak_bonus(streak_before, correct_count):
+    """streak_before: olaya girerken süren seri; correct_count: bu olayda
+    art arda bilinen soru sayısı. Seri eşiği geçen her doğru için bonus."""
+    bonus = 0
+    s = max(0, min(int(streak_before or 0), 1000))
+    for _ in range(correct_count):
+        s += 1
+        if s >= STREAK_MIN:
+            bonus += STREAK_BONUS
+    return bonus
 
 
 # ---------------- API ROUTES ----------------
@@ -264,10 +297,13 @@ def check_question(question_id):
 @app.route("/api/events/<int:event_id>/answer", methods=["POST"])
 def answer_event(event_id):
     """Bir olayın TÜM sorularının cevaplarını tek seferde alır; hepsi
-    doğruysa olay fethedilir. Body: {username, answers: {question_id: chosen}}"""
+    doğruysa olay fethedilir.
+    Body: {username, answers: {question_id: chosen},
+           times: {question_id: kalan_saniye}, streak: olaya girerken süren seri}"""
     data = request.get_json(force=True)
     username = data.get("username")
     answers = data.get("answers", {})  # {"12": "a", "13": "c", ...}
+    times = data.get("times", {}) or {}
 
     event = HistoricalEvent.query.get_or_404(event_id)
     player = get_or_create_player(username)
@@ -283,13 +319,19 @@ def answer_event(event_id):
         results[q.id] = {"correct": correct, "correct_option": q.correct}
 
     already = PlayerEventProgress.query.filter_by(player_id=player.id, event_id=event.id).first()
+    fast = 0
+    combo = 0
+    penalty = 0
     if all_correct and not already:
+        fast = sum(speed_bonus(times.get(str(q.id))) for q in questions)
+        combo = streak_bonus(data.get("streak", 0), len(questions))
         db.session.add(PlayerEventProgress(player_id=player.id, event_id=event.id))
         player.conquered_count += 1
-        player.gold += event.gold_reward
+        player.gold += event.gold_reward + fast + combo
         player.best_score = max(player.best_score, player.conquered_count)
     elif not all_correct:
-        player.gold = max(0, player.gold - 20)  # başarısız fetih küçük gold cezası
+        penalty = min(WRONG_PENALTY, player.gold)  # başarısız fetih küçük gold cezası
+        player.gold -= penalty
 
     db.session.commit()
 
@@ -300,14 +342,43 @@ def answer_event(event_id):
         "gold": player.gold,
         "conquered_count": player.conquered_count,
         "gold_reward": event.gold_reward,
+        "speed_bonus": fast,
+        "streak_bonus": combo,
+        "penalty": penalty,
     })
+
+
+@app.route("/api/progress", methods=["GET"])
+def era_progress():
+    """Her dönem için: olayı olan ülke sayısı ve oyuncunun tamamen fethettiği
+    ülke sayısı — dönem sekmelerindeki "7/11" göstergesi için."""
+    username = request.args.get("username", "")
+    conquered_ids = conquered_event_ids(get_or_create_player(username)) if username else set()
+    result = {}
+    for era in Era.query.order_by(Era.order).all():
+        by_country = {}
+        for e in HistoricalEvent.query.filter_by(era_id=era.id).all():
+            by_country.setdefault(e.country_id, []).append(e.id)
+        done = sum(1 for ids in by_country.values() if all(i in conquered_ids for i in ids))
+        result[era.key] = {"name": era.name, "conquered": done, "total": len(by_country)}
+    return jsonify(result)
+
+
+@app.route("/api/server-info", methods=["GET"])
+def server_info():
+    """Oda ekranında ikinci oyuncuya hangi adrese girmesi gerektiğini göstermek için."""
+    from netinfo import get_lan_ips
+    port = request.host.rsplit(":", 1)[-1] if ":" in request.host else "80"
+    return jsonify({"lan_urls": [f"http://{ip}:{port}" for ip in get_lan_ips()]})
 
 
 @app.route("/api/leaderboard", methods=["GET"])
 def leaderboard():
-    top = Player.query.order_by(Player.best_score.desc()).limit(10).all()
+    top = (Player.query.order_by(Player.best_score.desc(), Player.gold.desc())
+           .limit(10).all())
     return jsonify([
-        {"username": p.username, "best_score": p.best_score, "gold": p.gold}
+        {"username": p.username, "best_score": p.best_score, "gold": p.gold,
+         "conquered_count": p.conquered_count, "character_key": p.character_key}
         for p in top
     ])
 
@@ -326,6 +397,7 @@ def list_countries_raw():
 # doğru bilirse olay onun olur, yanlış/süre biterse olay tekrar herkese açılır.
 
 rooms = {}
+MATCH_SECONDS = int(os.environ.get("BILGI_MATCH_SECONDS", 5 * 60))  # iki kişilik maçın süre sınırı
 
 
 def make_room_code():
@@ -333,6 +405,13 @@ def make_room_code():
         code = str(random.randint(1000, 9999))
         if code not in rooms:
             return code
+
+
+def room_event_query(room):
+    q = HistoricalEvent.query
+    if room.get("era_id"):
+        q = q.filter_by(era_id=room["era_id"])
+    return q
 
 
 def all_events_state(room):
@@ -347,8 +426,30 @@ def all_events_state(room):
             "state": room["events"][e.id]["state"],
             "owner": room["events"][e.id]["owner"],
         }
-        for e in HistoricalEvent.query.all()
+        for e in room_event_query(room).all()
     ]
+
+
+def finish_match(code, reason):
+    """Maçı bitirir (tüm olaylar alındı ya da süre doldu) ve skorları yollar."""
+    room = rooms.get(code)
+    if not room or room.get("over"):
+        return
+    room["over"] = True
+    scores = {p: 0 for p in room["players"]}
+    gold = {p: 0 for p in room["players"]}
+    for r in room["events"].values():
+        if r["state"] == "conquered" and r["owner"] in scores:
+            scores[r["owner"]] += 1
+            gold[r["owner"]] += r.get("earned", 0)
+    socketio.emit("match_over", {"scores": scores, "gold": gold, "reason": reason}, room=code)
+
+
+def match_timer(code, started_at):
+    socketio.sleep(MATCH_SECONDS)
+    room = rooms.get(code)
+    if room and room.get("started_at") == started_at:
+        finish_match(code, "time")
 
 
 def find_room_by_sid(sid):
@@ -365,15 +466,24 @@ def handle_create_room(data):
         emit("room_error", {"message": "Kullanıcı adı gerekli"})
         return
 
+    era = Era.query.filter_by(key=(data or {}).get("era", "")).first()
     code = make_room_code()
-    rooms[code] = {
+    room = {
         "code": code,
         "players": [username],
         "sids": {username: request.sid},
-        "events": {e.id: {"state": "available", "owner": None, "excluded_qids": set()} for e in HistoricalEvent.query.all()},
+        "era_id": era.id if era else None,
+        "era_key": era.key if era else None,
+        "era_name": era.name if era else "Tüm Dönemler",
+        "over": False,
     }
+    room["events"] = {
+        e.id: {"state": "available", "owner": None, "excluded_qids": set()}
+        for e in room_event_query(room).all()
+    }
+    rooms[code] = room
     join_room(code)
-    emit("room_created", {"code": code, "username": username})
+    emit("room_created", {"code": code, "username": username, "era_name": room["era_name"]})
 
 
 @socketio.on("join_room_request")
@@ -405,11 +515,18 @@ def handle_join_room_request(data):
         p = Player.query.filter_by(username=p_username).first()
         characters[p_username] = p.character_key if p else None
 
+    started_at = time.time()
+    room["started_at"] = started_at
+    socketio.start_background_task(match_timer, code, started_at)
+
     emit("match_start", {
         "code": code,
         "players": room["players"],
         "characters": characters,
         "events": all_events_state(room),
+        "era_key": room["era_key"],
+        "era_name": room["era_name"],
+        "seconds_left": MATCH_SECONDS,
     }, room=code)
 
 
@@ -422,7 +539,7 @@ def handle_attack_event(data):
 
     room = rooms.get(code)
     rs = room["events"].get(event_id) if room else None
-    if not room or not rs or rs["state"] != "available":
+    if not room or room.get("over") or not rs or rs["state"] != "available":
         emit("attack_denied", {"event_id": event_id})
         return
 
@@ -435,6 +552,8 @@ def handle_attack_event(data):
     rs["state"] = "locked"
     rs["owner"] = username
     rs["qIndex"] = 0
+    rs["bonus"] = 0
+    rs["asked_at"] = time.time()
     emit("event_locked", {"event_id": event_id, "by": username}, room=code)
 
     q = questions[0]
@@ -463,10 +582,13 @@ def handle_submit_answer(data):
     rs = room["events"].get(event_id) if room else None
     question = EventQuestion.query.get(question_id)
     event = HistoricalEvent.query.get(event_id)
-    if not room or not rs or not question or not event or rs["owner"] != username:
+    if not room or room.get("over") or not rs or not question or not event or rs["owner"] != username:
         return
 
     correct = (chosen == question.correct)
+    if correct:
+        # hız bonusunu sunucu kendi saatine göre hesaplar (istemciye güvenmeden)
+        rs["bonus"] = rs.get("bonus", 0) + speed_bonus(QUESTION_TIME - (time.time() - rs.get("asked_at", time.time())))
 
     if not correct:
         rs["state"] = "available"
@@ -481,6 +603,7 @@ def handle_submit_answer(data):
 
     if next_index < len(questions):
         rs["qIndex"] = next_index
+        rs["asked_at"] = time.time()
         # doğru: sıradaki soruyu sadece saldırana gönder (rakibe bilgi sızdırmadan).
         # İstemci, "question_ready" alması bir önceki cevabın doğru olduğu anlamına
         # geldiğini bilir (yanlışta her zaman event_result gelir).
@@ -500,25 +623,25 @@ def handle_submit_answer(data):
     # son soru da doğru: olay fethedildi
     rs["state"] = "conquered"
     rs["owner"] = username
+    earned = event.gold_reward + rs.get("bonus", 0)
+    rs["earned"] = earned
     player = Player.query.filter_by(username=username).first()
     if player:
-        player.gold += event.gold_reward
+        player.gold += earned
         db.session.commit()
     emit("event_result", {
         "event_id": event_id,
         "correct": True,
         "owner": username,
         "by": username,
-        "gold_reward": event.gold_reward,
+        "gold_reward": earned,
+        "base_reward": event.gold_reward,
+        "speed_bonus": rs.get("bonus", 0),
         "correct_option": question.correct,
     }, room=code)
 
     if all(r["state"] == "conquered" for r in room["events"].values()):
-        scores = {p: 0 for p in room["players"]}
-        for r in room["events"].values():
-            if r["owner"] in scores:
-                scores[r["owner"]] += 1
-        emit("match_over", {"scores": scores}, room=code)
+        finish_match(code, "all")
 
 
 @socketio.on("disconnect")
