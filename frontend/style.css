@@ -538,6 +538,9 @@ h2 {
   width: clamp(200px, 52vh, 30rem);
   animation: logo-in 0.9s var(--ease-back) both, logo-float 4s ease-in-out 1s infinite;
 }
+@media (pointer: coarse) {
+  .logo-wrap { max-width: 90%; }
+}
 .hero-logo { width: 100%; height: auto; display: block; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35)); }
 /* Logonun sadece kendi piksellerinde gezen parıltı (maske = logonun kendisi) */
 .logo-wrap::after {
@@ -546,8 +549,8 @@ h2 {
   inset: 0;
   background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.75) 50%, transparent 65%) no-repeat;
   background-size: 250% 100%;
-  -webkit-mask: url("assets/logo-badge.webp") center / 100% 100% no-repeat;
-  mask: url("assets/logo-badge.webp") center / 100% 100% no-repeat;
+  -webkit-mask: url("assets/bilgi_akini_logo.png") center / 100% 100% no-repeat;
+  mask: url("assets/bilgi_akini_logo.png") center / 100% 100% no-repeat;
   animation: logo-shine 3.6s ease-in-out 1.1s infinite;
   background-position: 150% 0;
   pointer-events: none;
