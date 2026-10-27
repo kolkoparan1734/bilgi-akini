@@ -25,38 +25,37 @@ bilgi-akini/
     └── game.js
 ```
 
-## Windows'ta çalıştırma (geliştirme)
+## Windows'ta çalıştırma
 
-### 1. Backend'i ayağa kaldır
+**`start.bat`'e çift tıkla.** Python'u kendisi bulur (ilk seferde sanal ortamı
+kurar), oyun sunucusunu açar, sunucu hazır olunca tarayıcıyı açar ve
+telefondan girilecek adresi yazar (örn. `http://192.168.1.20:5000`).
+Oyun ve API aynı sunucudan (port 5000) servis edilir; internet gerekmez
+(fontlar ve socket.io `frontend/` içinde).
+
+- Telefon ve bilgisayar aynı Wi-Fi'da olmalı; Windows güvenlik duvarı sorarsa
+  Python'a izin ver.
+- `sifirla.bat`: test oyuncularını ve ilerlemeyi siler (sorular korunur).
+- Kısayollar (masaüstü): `1-4` şık seç, `Enter` devam, `Esc`/`Backspace`
+  pencereyi kapat, `F` tam ekran.
+
+Elle çalıştırmak istersen:
 
 ```powershell
 cd backend
 python -m venv venv
-venv\Scripts\activate
+venv\Scriptsctivate
 pip install -r requirements.txt
 python app.py
 ```
 
-Bu, `http://localhost:5000` adresinde API'yi başlatır ve **SQLite** ile
-otomatik olarak örnek sorular/bölgeler doldurur (`bilgi_akini.db` dosyası
-oluşur). Hiçbir ekstra kurulum gerekmez — ilk test için bu yeterli.
+Sonra tarayıcıda `http://localhost:5000` adresine git.
 
-`requirements.txt` artık `Flask-SocketIO` da içeriyor (2 kişilik gerçek
-zamanlı mod için); `pip install -r requirements.txt` bunu otomatik kurar,
-ekstra bir adım gerekmez.
+### Görseller
 
-### 2. Frontend'i aç
-
-`frontend/index.html` dosyasını doğrudan tarayıcıda açabilirsin, ya da basit
-bir sunucuyla servis et (bazı tarayıcılar `fetch`i dosya:// üzerinden
-kısıtlayabilir):
-
-```powershell
-cd frontend
-python -m http.server 5500
-```
-
-Sonra tarayıcıda `http://localhost:5500` adresine git.
+`kaynak_gorseller/` orijinal PNG'leri tutar; `frontend/assets/` altındaki
+küçültülmüş WebP'ler ve uygulama ikonları
+`backendenv\Scripts\python.exe scripts\optimize_images.py` ile üretilir.
 
 ## MySQL'e geçiş (üretim / gerçek yayın için)
 
@@ -79,7 +78,7 @@ ya da doğrudan veritabanına INSERT at (ileride bir admin panel eklenebilir).
 ## Sıradaki adımlar (mobil paketleme)
 
 1. Backend'i bir sunucuya deploy et (Render / Railway / PythonAnywhere) —
-   `game.js` içindeki `API_BASE` değişkenini o adrese güncelle.
+   `frontend/config.js` içindeki `BILGI_AKINI_SERVER` değerini o adrese yaz.
 2. Projeyi bir Capacitor kabuğuna al:
    ```
    npm install @capacitor/core @capacitor/cli

@@ -1872,3 +1872,90 @@ function updateDuoStatsUI() {
   animateNumber(el.conquerCount, mine);
   animateNumber(el.enemyConquerCount, enemy);
 }
+
+// ---------- Tam ekran (sunum modu) ----------
+// iPhone Safari Fullscreen API'yi desteklemez; orada buton gizli kalır.
+const fullscreenBtn = document.getElementById("fullscreen-btn");
+if (document.fullscreenEnabled) fullscreenBtn.classList.remove("hidden");
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (err) {
+    /* tarayıcı izin vermedi — sessizce yok say */
+  }
+}
+fullscreenBtn.addEventListener("click", () => {
+  playSfxClick();
+  toggleFullscreen();
+});
+document.addEventListener("fullscreenchange", () => {
+  fullscreenBtn.classList.toggle("active", !!document.fullscreenElement);
+  fullscreenBtn.setAttribute("aria-label", document.fullscreenElement ? "Tam ekrandan çık" : "Tam ekran");
+});
+
+// ---------- Klavye kısayolları (masaüstü / projeksiyon) ----------
+// 1-4: şık seç · Enter: devam · Esc (tam ekranda Esc tarayıcıya gittiği
+// için Backspace de olur): açık pencereyi kapat · F: tam ekran
+const ESC_SAFE_MODALS = ["event-select-modal", "empty-modal", "result-modal", "era-modal", "leaderboard-modal"];
+
+function topOpenModal(ids) {
+  const open = [...document.querySelectorAll(".modal[data-dismiss]")].filter(
+    (m) => isOpen(m) && (!ids || ids.includes(m.id))
+  );
+  return open[open.length - 1] || null;
+}
+
+function pressModalButton(modal) {
+  const btn = document.getElementById(modal.dataset.dismiss);
+  if (!btn) return;
+  btn.classList.add("pressed");
+  setTimeout(() => {
+    btn.classList.remove("pressed");
+    btn.click();
+  }, 90);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+  const typing = e.target instanceof HTMLInputElement;
+  if (typing) return; // isim/oda kodu yazarken kısayollar devre dışı
+
+  if (isOpen(el.quizModal) && !state.answered && /^[1-4]$/.test(e.key)) {
+    const btn = el.quizOptions.querySelector(`.option-btn[data-num="${e.key}"]`);
+    if (btn) {
+      e.preventDefault();
+      btn.classList.add("pressed");
+      setTimeout(() => btn.click(), 80);
+    }
+    return;
+  }
+
+  if (e.key === "Enter") {
+    if (!el.battleCry.classList.contains("hidden")) {
+      e.preventDefault();
+      finishBattleCry();
+      return;
+    }
+    const modal = topOpenModal();
+    if (modal) {
+      e.preventDefault();
+      pressModalButton(modal);
+    }
+    return;
+  }
+
+  if (e.key === "Escape" || e.key === "Backspace") {
+    const modal = topOpenModal(ESC_SAFE_MODALS);
+    if (modal) {
+      e.preventDefault();
+      pressModalButton(modal);
+    }
+    return;
+  }
+
+  if (e.key === "f" || e.key === "F") {
+    if (document.fullscreenEnabled) toggleFullscreen();
+  }
+});

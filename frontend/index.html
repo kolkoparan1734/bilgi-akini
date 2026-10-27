@@ -5,10 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Bilgi Akını — Aklınla Savaş, Bilginle Fethet</title>
 <link rel="stylesheet" href="fonts.css?v=1">
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=30">
 <link rel="icon" type="image/png" href="assets/icons/icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3f2718">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bilgi Akını">
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png">
 <link rel="preload" as="image" href="assets/hero-login.webp">
 <script src="vendor/socket.io.min.js"></script>
 <script src="config.js"></script>
@@ -74,6 +79,10 @@
       <button id="leaderboard-btn" class="stat icon-btn" aria-label="Kumandanlar Sıralaması" type="button">
         <span class="stat-icon">🏆</span>
       </button>
+      <button id="fullscreen-btn" class="stat icon-btn fullscreen-btn hidden" aria-label="Tam ekran" title="Tam ekran (F)" type="button">
+        <svg class="fs-enter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        <svg class="fs-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+      </button>
       <button id="music-toggle-btn" class="stat icon-btn music-toggle" aria-label="Müziği aç/kapat" type="button">
         <span id="music-icon" class="stat-icon">🔊</span>
       </button>
@@ -91,6 +100,7 @@
         <h2>Adını Söyle, Kumandan</h2>
         <input id="username-input" type="text" placeholder="isim yaz..." maxlength="20" autocomplete="off" enterkeyhint="go">
         <button id="start-btn" class="btn-primary btn-hero" type="button"><span>Dünyayı Fethet</span></button>
+        <p class="login-note">Aynı adla girersen seferin kaldığı yerden devam eder.</p>
       </div>
     </div>
   </section>
@@ -240,7 +250,7 @@
       <h2 id="result-title">Fetih Tamam!</h2>
       <p class="modal-text" id="result-detail"></p>
       <div class="reward-rows" id="reward-rows"></div>
-      <button id="result-close-btn" class="btn-primary" type="button">Devam Et</button>
+      <button id="result-close-btn" class="btn-primary" type="button">Devam Et<span class="key-hint">Enter</span></button>
     </div>
   </div>
 
@@ -253,7 +263,7 @@
       <div class="character-icon era-portrait" id="era-portrait"></div>
       <h2 class="era-title" id="era-title">Orta Çağ</h2>
       <p class="era-detail" id="era-detail"></p>
-      <button id="era-close-btn" class="btn-primary btn-hero" type="button"><span>Sefere Devam</span></button>
+      <button id="era-close-btn" class="btn-primary btn-hero" type="button"><span>Sefere Devam<span class="key-hint">Enter</span></span></button>
     </div>
   </div>
 
@@ -293,6 +303,6 @@
 
 </div>
 
-<script src="game.js?v=20"></script>
+<script src="game.js?v=30"></script>
 </body>
 </html>
