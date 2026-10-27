@@ -136,27 +136,35 @@ def build_hero():
     save_webp(im, "hero-login.webp", 78, max_w=1920)
 
 
-# Giriş / seçim ekranı arka planları. Orijinal JPG'ler yedek olarak
-# frontend/assets/ içinde kalır; WebP hedefi 400-600 KB, en fazla 1920 px.
-BACKGROUNDS = ["arkaplan-giris", "arkaplan-secim"]
+# Giriş / seçim ekranı arka planları. Kaynak: AI ile sola/geniş açıya
+# genişletilmiş (outpaint) PNG'ler (kaynak_gorseller/outpaint/). İlk elden
+# gelen JPG'ler yedek olarak frontend/assets/ içinde kalır.
+# WebP hedefi 400-600 KB, en fazla 1920 px genişlik.
+# crop_right: görselin sağındaki boş gökyüzünü at ki okçu sağ kenara yaslansın
+# (style.css'teki --bg-ratio değerleri bu kırpılmış oranlara göre).
+BACKGROUNDS = {
+    "arkaplan-giris": {"src": "outpaint/giris-21x9.png", "crop_right": 1.0},
+    "arkaplan-secim": {"src": "outpaint/secim-21x9.png", "crop_right": 0.92},
+}
 
 
 def build_backgrounds():
-    for name in BACKGROUNDS:
-        im = Image.open(os.path.join(OUT, name + ".jpg")).convert("RGB")
-        im = im.resize((1920, round(im.height * 1920 / im.width)), Image.LANCZOS)
+    for name, cfg in BACKGROUNDS.items():
+        im = Image.open(src(cfg["src"])).convert("RGB")
+        im = im.crop((0, 0, round(im.width * cfg["crop_right"]), im.height))
+        ratio = im.width / im.height
+        im = im.resize((1920, round(1920 / ratio)), Image.LANCZOS)
         path = os.path.join(OUT, name + ".webp")
         # 400-600 KB aralığına düşen en yüksek kaliteyi bul
         chosen = None
         for q in range(95, 59, -3):
             im.save(path, "WEBP", quality=q, method=6)
-            size_kb = os.path.getsize(path) // 1024
-            if size_kb <= 600:
+            if os.path.getsize(path) <= 600 * 1024:
                 chosen = q
                 break
-        print(f"{name}.webp".ljust(33) + f"{im.size[0]}x{im.size[1]}  q{chosen}  {os.path.getsize(path) // 1024} KB")
-        # Ekran görselden genişse sol boşluğu dolduran küçük, bulanık kopya
-        small = im.resize((480, round(im.height * 480 / im.width)), Image.LANCZOS).filter(ImageFilter.GaussianBlur(10))
+        print(f"{name}.webp".ljust(33) + f"{im.size[0]}x{im.size[1]}  oran {ratio:.4f}  q{chosen}  {os.path.getsize(path) // 1024} KB")
+        # Ekran görselden de genişse sol boşluğu dolduran küçük, bulanık kopya
+        small = im.resize((480, round(480 / ratio)), Image.LANCZOS).filter(ImageFilter.GaussianBlur(10))
         small.save(os.path.join(OUT, name + "-blur.webp"), "WEBP", quality=70, method=6)
 
 
