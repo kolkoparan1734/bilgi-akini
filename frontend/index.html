@@ -4,12 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Bilgi Akını — Aklınla Savaş, Bilginle Fetih Et</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="fonts.css?v=1">
+<link rel="stylesheet" href="style.css?v=13">
+<link rel="icon" type="image/png" href="assets/icons/icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3f2718">
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="vendor/socket.io.min.js"></script>
+<script src="config.js"></script>
 </head>
 <body>
 
@@ -20,12 +21,30 @@
   </div>
 </div>
 
+<!-- SUNUCU BAĞLANTI HATASI -->
+<div id="server-error" class="server-error hidden" role="alertdialog" aria-labelledby="server-error-title">
+  <div class="server-error-card">
+    <div class="server-error-icon">⚠</div>
+    <h2 id="server-error-title">Sunucuya Bağlanılamadı</h2>
+    <p id="server-error-text">Oyun sunucusu çalışmıyor ya da bu cihaz ona ulaşamıyor.</p>
+    <ul class="server-error-tips">
+      <li>Bilgisayarda <strong>start.bat</strong> açık mı?</li>
+      <li>Telefon ve bilgisayar <strong>aynı Wi-Fi</strong>'da mı?</li>
+      <li>Adres start.bat penceresinde yazan adresle aynı mı?</li>
+    </ul>
+    <button id="server-retry-btn" class="btn-primary" type="button">Tekrar Dene</button>
+  </div>
+</div>
+
+<!-- BAĞLANTI KOPTU BANDI (2 kişilik mod) -->
+<div id="conn-banner" class="conn-banner hidden">Bağlantı koptu, yeniden bağlanılıyor…</div>
+
 <div id="app">
 
   <!-- ÜST BANDO -->
   <header class="topbar">
     <div class="brand">
-      <img class="brand-logo" src="assets/logo-badge.png" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
+      <img class="brand-logo" src="assets/logo-badge.webp" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
     </div>
     <div class="stats">
       <div class="stat character-stat hidden" id="character-stat" title="">
@@ -53,7 +72,7 @@
   <!-- GİRİŞ EKRANI -->
   <section id="login-screen" class="screen hero-screen">
     <div class="login-card">
-      <img class="hero-logo" src="assets/logo-badge.png" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
+      <img class="hero-logo" src="assets/logo-badge.webp" alt="Bilgi Akını — Aklınla Savaş, Bilginle Fethet!">
       <p class="login-eyebrow">Sefere çıkmadan önce</p>
       <h2>Adını Söyle, Kumandan</h2>
       <input id="username-input" type="text" placeholder="isim yaz..." maxlength="20" autocomplete="off">
@@ -64,6 +83,7 @@
   <!-- KUMANDAN (KARAKTER) SEÇİM EKRANI -->
   <section id="character-screen" class="screen hidden hero-screen">
     <div class="character-select-card">
+      <button id="character-back-btn" class="back-btn" type="button" aria-label="Geri">‹ Geri</button>
       <p class="login-eyebrow">Sefere çıkmadan önce</p>
       <h2>Kumandanını Seç</h2>
       <div class="character-grid" id="character-grid"></div>
@@ -73,6 +93,7 @@
   <!-- MOD SEÇİM EKRANI -->
   <section id="mode-screen" class="screen hidden hero-screen">
     <div class="login-card">
+      <button id="mode-back-btn" class="back-btn" type="button" aria-label="Geri">‹ Geri</button>
       <p class="login-eyebrow">Nasıl sefere çıkalım?</p>
       <h2>Bir Mod Seç</h2>
       <button id="solo-mode-btn" class="mode-btn mode-btn-solo">
@@ -95,6 +116,7 @@
   <!-- ODA EKRANI (2 KİŞİLİK) -->
   <section id="room-screen" class="screen hidden hero-screen">
     <div class="login-card">
+      <button id="room-back-btn" class="back-btn" type="button" aria-label="Geri">‹ Geri</button>
       <p class="login-eyebrow">İki Kişilik Meydan Okuma</p>
       <h2>Oda Kur ya da Katıl</h2>
 
@@ -117,7 +139,10 @@
   <!-- HARİTA EKRANI (DÜNYA) -->
   <section id="map-screen" class="screen hidden">
     <div class="map-frame">
-      <div id="map" class="map"></div>
+      <div class="map-stage">
+        <img class="map-img" src="assets/world-map.webp" alt="" draggable="false">
+        <div id="map" class="map"></div>
+      </div>
       <svg class="compass-rose" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
         <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="1"/>
         <path d="M20 4 L23 18 L20 20 L17 18 Z" fill="currentColor"/>
@@ -206,6 +231,6 @@
 
 </div>
 
-<script src="game.js?v=11"></script>
+<script src="game.js?v=12"></script>
 </body>
 </html>

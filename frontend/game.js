@@ -2,9 +2,19 @@
 // BİLGİ AKINI — oyun mantığı (dünya haritası + 2 kişilik mod)
 // ============================================
 
-const API_HOST = window.location.hostname;
-const API_BASE = `http://${API_HOST}:5000/api`;
-const SOCKET_BASE = `http://${API_HOST}:5000`;
+// Sunucu adresi: config.js'te elle verilmişse o (Capacitor), yoksa sayfanın
+// açıldığı sunucu (Flask frontend'i de servis ediyor). Eski usul 5500
+// portundan açılırsa API'yi aynı makinenin 5000 portunda ara.
+function resolveServer() {
+  if (window.BILGI_AKINI_SERVER) return window.BILGI_AKINI_SERVER.replace(/\/$/, "");
+  const loc = window.location;
+  if (!loc.protocol.startsWith("http")) return "http://localhost:5000";
+  if (loc.port === "5500") return `${loc.protocol}//${loc.hostname}:5000`;
+  return loc.origin;
+}
+const SERVER = resolveServer();
+const API_BASE = `${SERVER}/api`;
+const SOCKET_BASE = SERVER;
 const QUESTION_TIME = 15; // saniye
 
 // ---------- Kumandanlar (karakter seçimi — sadece kozmetik) ----------
@@ -12,14 +22,14 @@ const QUESTION_TIME = 15; // saniye
 // portrait: assets/characters/ altına konacak dosya adı. Dosya henüz yoksa
 // (404) otomatik olarak icon (emoji) rozetine düşer — bkz. applyPortrait().
 const CHARACTERS = [
-  { key: "mete_han", name: "Mete Han", title: "Büyük Hun Hakanı", icon: "🏹", theme: "theme-gold", portrait: "mete_han.png" },
-  { key: "attila", name: "Attila", title: "Hunların Batı Hükümdarı", icon: "🐎", theme: "theme-red", portrait: "attila.png" },
-  { key: "cengiz_han", name: "Cengiz Han", title: "Moğol İmparatorluğu Kurucusu", icon: "🐺", theme: "theme-purple", portrait: "cengiz_han.png" },
-  { key: "timur", name: "Timur", title: "Türk-Moğol Fatihi", icon: "⚔", theme: "theme-teal", portrait: "timur.png" },
-  { key: "iskender", name: "Büyük İskender", title: "Makedonya Kralı", icon: "🛡", theme: "theme-gold", portrait: "iskender.png" },
-  { key: "jul_sezar", name: "Jül Sezar", title: "Roma Cumhuriyeti Generali", icon: "🦅", theme: "theme-red", portrait: "jul_sezar.png" },
-  { key: "fatih", name: "Fatih Sultan Mehmed", title: "Osmanlı Padişahı", icon: "🏰", theme: "theme-purple", portrait: "fatih.png" },
-  { key: "napolyon", name: "Napolyon Bonapart", title: "Fransız İmparatoru", icon: "🎖", theme: "theme-teal", portrait: "napolyon.png" },
+  { key: "mete_han", name: "Mete Han", title: "Büyük Hun Hakanı", icon: "🏹", theme: "theme-gold", portrait: "mete_han.webp" },
+  { key: "attila", name: "Attila", title: "Hunların Batı Hükümdarı", icon: "🐎", theme: "theme-red", portrait: "attila.webp" },
+  { key: "cengiz_han", name: "Cengiz Han", title: "Moğol İmparatorluğu Kurucusu", icon: "🐺", theme: "theme-purple", portrait: "cengiz_han.webp" },
+  { key: "timur", name: "Timur", title: "Türk-Moğol Fatihi", icon: "⚔", theme: "theme-teal", portrait: "timur.webp" },
+  { key: "iskender", name: "Büyük İskender", title: "Makedonya Kralı", icon: "🛡", theme: "theme-gold", portrait: "iskender.webp" },
+  { key: "jul_sezar", name: "Jül Sezar", title: "Roma Cumhuriyeti Generali", icon: "🦅", theme: "theme-red", portrait: "jul_sezar.webp" },
+  { key: "fatih", name: "Fatih Sultan Mehmed", title: "Osmanlı Padişahı", icon: "🏰", theme: "theme-purple", portrait: "fatih.webp" },
+  { key: "napolyon", name: "Napolyon Bonapart", title: "Fransız İmparatoru", icon: "🎖", theme: "theme-teal", portrait: "napolyon.webp" },
 ];
 function findCharacter(key) {
   return CHARACTERS.find((c) => c.key === key) || null;
@@ -131,6 +141,14 @@ const el = {
   matchRestartBtn: document.getElementById("match-restart-btn"),
   opponentLeftModal: document.getElementById("opponent-left-modal"),
   opponentLeftBtn: document.getElementById("opponent-left-btn"),
+
+  serverError: document.getElementById("server-error"),
+  serverErrorText: document.getElementById("server-error-text"),
+  serverRetryBtn: document.getElementById("server-retry-btn"),
+  connBanner: document.getElementById("conn-banner"),
+  characterBackBtn: document.getElementById("character-back-btn"),
+  modeBackBtn: document.getElementById("mode-back-btn"),
+  roomBackBtn: document.getElementById("room-back-btn"),
 
   musicToggleBtn: document.getElementById("music-toggle-btn"),
   musicIcon: document.getElementById("music-icon"),
@@ -291,6 +309,15 @@ function spawnConfetti(count = 26) {
   }
 }
 
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 // ---------- Sayaç animasyonu (altın/fetih sayısı akıp değişsin diye) ----------
 function animateNumber(target, to) {
   const from = parseInt(target.textContent, 10) || 0;
@@ -306,6 +333,57 @@ function animateNumber(target, to) {
   }
   requestAnimationFrame(step);
 }
+
+// ---------- Sunucu iletişimi ----------
+// Tüm HTTP istekleri buradan geçer: zaman aşımı, hata durumunda anlaşılır
+// "Sunucuya bağlanılamadı" ekranı. Hata yine fırlatılır ki çağıran akış dursun.
+const API_TIMEOUT_MS = 8000;
+
+async function api(path, { method = "GET", body } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    showServerError();
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function showServerError(text) {
+  el.serverErrorText.textContent = text || "Oyun sunucusu çalışmıyor ya da bu cihaz ona ulaşamıyor.";
+  el.serverError.classList.remove("hidden");
+}
+
+async function checkServer() {
+  try {
+    const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+    if (!res.ok) throw new Error();
+    el.serverError.classList.add("hidden");
+    return true;
+  } catch (err) {
+    showServerError("Sunucu başlatılamadı ya da bu cihaz ona ulaşamıyor.");
+    return false;
+  }
+}
+
+el.serverRetryBtn.addEventListener("click", async () => {
+  el.serverRetryBtn.disabled = true;
+  el.serverRetryBtn.textContent = "Bağlanıyor…";
+  await checkServer();
+  el.serverRetryBtn.disabled = false;
+  el.serverRetryBtn.textContent = "Tekrar Dene";
+});
+checkServer();
 
 // ---------- Başlangıç ----------
 el.startBtn.addEventListener("click", handleStart);
@@ -369,23 +447,21 @@ async function handleStart() {
   safeStorageSet("bilgi_akini_user", username);
 
   try {
-    const playerRes = await fetch(`${API_BASE}/player/${encodeURIComponent(username)}`);
-    const player = await playerRes.json();
+    const player = await api(`/player/${encodeURIComponent(username)}`);
     state.gold = player.gold;
     state.conqueredCount = player.conquered_count;
     state.character = player.character_key || null;
     updateStatsUI();
     updateCharacterBadgeUI();
 
-    const erasRes = await fetch(`${API_BASE}/eras`);
-    state.eras = await erasRes.json();
+    state.eras = await api("/eras");
     state.currentEra = (state.eras.find((e) => e.key === "yukselis") || state.eras[0]).key;
 
     el.loginScreen.classList.add("hidden");
     el.characterScreen.classList.remove("hidden");
     renderCharacterGrid();
   } catch (err) {
-    alert("Sunucuya bağlanılamadı. Backend çalışıyor mu? (" + err.message + ")");
+    /* api() bağlantı hatası ekranını zaten gösterdi */
   }
 }
 
@@ -447,6 +523,36 @@ function updateCharacterBadgeUI() {
   el.characterStat.classList.remove("hidden");
 }
 
+// ---------- Geri butonları ----------
+el.characterBackBtn.addEventListener("click", () => {
+  playSfxClick();
+  el.characterScreen.classList.add("hidden");
+  el.loginScreen.classList.remove("hidden");
+});
+el.modeBackBtn.addEventListener("click", () => {
+  playSfxClick();
+  el.modeScreen.classList.add("hidden");
+  el.characterScreen.classList.remove("hidden");
+  renderCharacterGrid();
+});
+el.roomBackBtn.addEventListener("click", () => {
+  playSfxClick();
+  leaveRoom();
+  el.roomScreen.classList.add("hidden");
+  el.modeScreen.classList.remove("hidden");
+});
+
+// Bekleyen odadan çık: soketi kapatmak sunucuda odayı da siler.
+function leaveRoom() {
+  if (state.socket) {
+    const socket = state.socket;
+    state.socket = null;
+    socket.disconnect();
+  }
+  state.roomCode = null;
+  el.connBanner.classList.add("hidden");
+}
+
 // ---------- Mod seçimi ----------
 el.soloModeBtn.addEventListener("click", async () => {
   playSfxClick();
@@ -491,8 +597,21 @@ el.joinRoomBtn.addEventListener("click", () => {
 
 function ensureSocket() {
   if (state.socket) return state.socket;
-  const socket = io(SOCKET_BASE);
+  const socket = io(SOCKET_BASE, { reconnectionDelayMax: 3000 });
   state.socket = socket;
+
+  socket.on("connect", () => el.connBanner.classList.add("hidden"));
+  socket.on("disconnect", () => {
+    if (state.socket === socket) el.connBanner.classList.remove("hidden");
+  });
+  socket.on("connect_error", () => {
+    if (!state.roomCode) {
+      el.roomError.textContent = "Sunucuya bağlanılamadı. start.bat açık mı, aynı Wi-Fi'da mısınız?";
+      el.roomError.classList.remove("hidden");
+    } else {
+      el.connBanner.classList.remove("hidden");
+    }
+  });
 
   socket.on("room_error", ({ message }) => {
     el.roomError.textContent = message;
@@ -513,8 +632,7 @@ function ensureSocket() {
     state.opponentCharacter = opponentCharKey;
 
     if (!state.countriesRaw) {
-      const res = await fetch(`${API_BASE}/countries/all`);
-      state.countriesRaw = await res.json();
+      state.countriesRaw = await api("/countries/all");
     }
     state.duoEvents = new Map(data.events.map((e) => [e.id, e]));
 
@@ -635,10 +753,9 @@ async function refreshMap() {
 }
 
 async function loadCountries() {
-  const res = await fetch(
-    `${API_BASE}/countries?era=${encodeURIComponent(state.currentEra)}&username=${encodeURIComponent(state.username)}`
+  state.countries = await api(
+    `/countries?era=${encodeURIComponent(state.currentEra)}&username=${encodeURIComponent(state.username)}`
   );
-  state.countries = await res.json();
   renderMap();
 }
 
@@ -711,10 +828,9 @@ async function openCountry(country) {
   if (state.mode === "duo") {
     events = country.events.filter((e) => e.state === "available");
   } else {
-    const res = await fetch(
-      `${API_BASE}/countries/${country.id}/events?era=${encodeURIComponent(state.currentEra)}&username=${encodeURIComponent(state.username)}`
+    events = await api(
+      `/countries/${country.id}/events?era=${encodeURIComponent(state.currentEra)}&username=${encodeURIComponent(state.username)}`
     );
-    events = await res.json();
   }
 
   if (events.length === 0) {
@@ -754,8 +870,7 @@ async function openCountry(country) {
 
 // ---------- Olay / çok soruluk quiz akışı — TEK KİŞİLİK ----------
 async function openEvent(eventSummary) {
-  const res = await fetch(`${API_BASE}/events/${eventSummary.id}?username=${encodeURIComponent(state.username)}`);
-  const event = await res.json();
+  const event = await api(`/events/${eventSummary.id}?username=${encodeURIComponent(state.username)}`);
 
   state.activeEvent = event;
   state.qIndex = 0;
@@ -791,7 +906,9 @@ function renderQuizQuestion() {
   el.quizText.textContent = question.text;
   el.quizOptions.innerHTML = "";
 
-  Object.entries(question.options).forEach(([key, label]) => {
+  // Gösterim sırası karıştırılır; cevap harf anahtarıyla (a-d) kontrol
+  // edildiği için doğru cevap değişmez.
+  shuffle(Object.entries(question.options)).forEach(([key, label]) => {
     const btn = document.createElement("button");
     btn.className = "option-btn";
     btn.textContent = label;
@@ -842,12 +959,7 @@ async function handleAnswerSolo(chosenKey) {
 
   let check;
   try {
-    const res = await fetch(`${API_BASE}/questions/${question.id}/check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chosen: chosenKey }),
-    });
-    check = await res.json();
+    check = await api(`/questions/${question.id}/check`, { method: "POST", body: { chosen: chosenKey } });
   } catch (err) {
     check = { correct: false, correct_option: null };
   }
@@ -876,12 +988,10 @@ async function finishSoloEvent() {
 
   let result;
   try {
-    const res = await fetch(`${API_BASE}/events/${event.id}/answer`, {
+    result = await api(`/events/${event.id}/answer`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: state.username, answers: state.answers }),
+      body: { username: state.username, answers: state.answers },
     });
-    result = await res.json();
   } catch (err) {
     result = null;
   }

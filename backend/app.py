@@ -13,13 +13,17 @@ import os
 import random
 from datetime import datetime
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit, join_room
 from sqlalchemy import inspect as sa_inspect, text as sa_text
 
-app = Flask(__name__)
+# Frontend klasörü de bu sunucudan servis edilir: tek port (5000), tek
+# güvenlik duvarı izni; telefon http://<bilgisayar-ip>:5000 adresine girer.
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+
+app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 CORS(app)  # Mobil uygulama / farklı origin'lerden erişim için
 socketio = SocketIO(app, cors_allowed_origins="*")  # 2 kişilik gerçek zamanlı mod
 
@@ -123,6 +127,11 @@ def conquered_event_ids(player):
 
 
 # ---------------- API ROUTES ----------------
+
+@app.route("/")
+def index():
+    return send_from_directory(FRONTEND_DIR, "index.html")
+
 
 @app.route("/api/health")
 def health():
@@ -1263,6 +1272,36 @@ def seed_data():
     db.session.commit()
 
 
+# Ülke noktalarının harita görseli (frontend/assets/world-map.webp — kırpılmış
+# hâli) üzerindeki % konumları. Görsel değişirse sadece burası güncellenir;
+# her açılışta veritabanındaki x/y bu değerlere eşitlenir.
+COUNTRY_LAYOUT = {
+    "amerika": (16.0, 27.4),
+    "meksika": (13.9, 43.8),
+    "brezilya": (30.4, 65.8),
+    "fransa": (45.0, 28.5),
+    "almanya": (51.0, 19.5),
+    "turkiye": (59.3, 33.6),
+    "rusya": (66.5, 12.3),
+    "misir": (56.2, 45.9),
+    "iran": (66.0, 38.4),
+    "cin": (77.8, 31.5),
+    "hindistan": (71.1, 46.6),
+    "japonya": (88.1, 27.4),
+}
+
+
+def sync_country_layout():
+    changed = False
+    for c in Country.query.all():
+        pos = COUNTRY_LAYOUT.get(c.key)
+        if pos and (c.x, c.y) != pos:
+            c.x, c.y = pos
+            changed = True
+    if changed:
+        db.session.commit()
+
+
 def ensure_schema_migrations():
     """db.create_all() zaten var olan tabloları değiştirmez; bu yüzden
     daha önceden oluşmuş bir bilgi_akini.db dosyasına sonradan eklenen
@@ -1282,7 +1321,21 @@ with app.app_context():
     db.create_all()
     ensure_schema_migrations()
     seed_data()
+    sync_country_layout()
 
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, host="0.0.0.0", port=5000)
+    from netinfo import get_lan_ips
+
+    port = int(os.environ.get("PORT", 5000))
+    ips = get_lan_ips()
+    print("=" * 56)
+    print("  BILGI AKINI SUNUCUSU CALISIYOR")
+    print(f"  Bilgisayar : http://localhost:{port}")
+    for ip in ips[:2]:
+        print(f"  Telefon    : http://{ip}:{port}   (ayni Wi-Fi)")
+    print("  Kapatmak icin bu pencereyi kapat.")
+    print("=" * 56, flush=True)
+    # debug/reloader kapalı: sunumda tek süreç, beklenmedik yeniden başlama yok.
+    socketio.run(app, host="0.0.0.0", port=port, debug=False,
+                 use_reloader=False, allow_unsafe_werkzeug=True)
