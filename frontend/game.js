@@ -763,6 +763,163 @@ async function tryLockLandscape() {
   }
 }
 
+// ---------- "Dünyayı Fethet" ok atışı geçişi ----------
+// Arka plan resmine dokunulmaz: okçunun resimdeki okunun ucu alev alır, ateşli
+// bir ok sağa fırlar, kamera okun peşinden sağa savrulur ve altın bir
+// parlamayla kumandan seçimine geçilir. Koordinatlar arkaplan-giris.webp
+// (1920x815) üzerindeki okun ucu/kuyruğu; ekran oranı ne olursa olsun
+// CSS'teki yerleşimle (sağa yaslı cover + Ken Burns) aynı hesapla bulunur.
+const ARROW_BG = { w: 1920, h: 815, tip: { x: 1832, y: 158 }, nock: { x: 1600, y: 171 } };
+let arrowIntro = null;
+
+function bgGirisPoint(p) {
+  const layer = document.querySelector(".bg-giris");
+  const r = layer.getBoundingClientRect();
+  const W = r.width, H = r.height, ratio = ARROW_BG.w / ARROW_BG.h;
+  const boxW = W / H >= ratio ? H * ratio : W;
+  const s = Math.max(boxW / ARROW_BG.w, H / ARROW_BG.h);
+  let x = W - (ARROW_BG.w - p.x) * s;
+  let y = H / 2 + (p.y - ARROW_BG.h / 2) * s;
+  let k = 1;
+  try {
+    const t = getComputedStyle(layer, "::after").transform;
+    if (t && t !== "none") k = new DOMMatrixReadOnly(t).a;
+  } catch (e) { /* eski tarayıcı: Ken Burns payı yok sayılır */ }
+  x = W + (x - W) * k;
+  y = H / 2 + (y - H / 2) * k;
+  return { x: r.left + x, y: r.top + y };
+}
+
+const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+
+// Parlama ekranı tamamen kapladığında çözülür; ekran değişimi o anda yapılır.
+function playArrowIntro() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
+  const tip = bgGirisPoint(ARROW_BG.tip);
+  const nock = bgGirisPoint(ARROW_BG.nock);
+  const dx = tip.x - nock.x, dy = tip.y - nock.y;
+  const len = Math.hypot(dx, dy);
+  const ang = Math.atan2(dy, dx);
+  const vw = window.innerWidth;
+  const dist = (vw - tip.x) / Math.cos(ang) + len * 4 + 80;
+
+  const fx = document.createElement("div");
+  fx.className = "arrow-fx";
+  fx.style.setProperty("--len", len.toFixed(1) + "px");
+  fx.innerHTML =
+    `<div class="arrow-fx-glow" style="left:${tip.x}px;top:${tip.y}px"></div>` +
+    `<div class="arrow-fx-shot" style="left:${tip.x}px;top:${tip.y}px;transform:rotate(${ang}rad)">` +
+      `<div class="arrow-fx-move">` +
+        `<div class="arrow-fx-trail"></div>` +
+        `<svg class="arrow-fx-arrow" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">` +
+          `<path d="M2 5 H90" stroke="#3b2413" stroke-width="2.2"/>` +
+          `<path d="M2 5 L9 1.2 M2 5 L9 8.8 M5 5 L12 1.2 M5 5 L12 8.8" stroke="#b8321f" stroke-width="1.4"/>` +
+          `<path d="M86 1.6 L100 5 L86 8.4 Z" fill="#fff1c9"/>` +
+        `</svg>` +
+      `</div>` +
+    `</div>` +
+    `<div class="arrow-fx-flash"></div>`;
+  document.body.appendChild(fx);
+  el.loginScreen.classList.add("launching");
+
+  const glow = fx.querySelector(".arrow-fx-glow");
+  const shot = fx.querySelector(".arrow-fx-shot");
+  const move = fx.querySelector(".arrow-fx-move");
+  const trail = fx.querySelector(".arrow-fx-trail");
+  const flash = fx.querySelector(".arrow-fx-flash");
+  const bg = document.querySelector(".hero-bg");
+  const g = Math.max(70, len * 0.75);
+  glow.style.width = glow.style.height = g + "px";
+
+  const sparks = (x, y, n, spread, life) => {
+    for (let i = 0; i < n; i++) {
+      const s = document.createElement("span");
+      s.className = "arrow-fx-spark";
+      s.style.left = x + "px";
+      s.style.top = y + "px";
+      fx.appendChild(s);
+      const a = ang + Math.PI + (Math.random() - 0.5) * spread;
+      const d = 20 + Math.random() * len * 0.5;
+      s.animate(
+        [
+          { transform: "translate(-50%,-50%) scale(1)", opacity: 1 },
+          { transform: `translate(calc(-50% + ${Math.cos(a) * d}px), calc(-50% + ${Math.sin(a) * d + 30}px)) scale(0.2)`, opacity: 0 },
+        ],
+        { duration: life + Math.random() * 250, easing: "cubic-bezier(.2,.7,.4,1)", fill: "forwards" }
+      );
+    }
+  };
+
+  // 1) okun ucu alev alır
+  glow.animate(
+    [
+      { transform: "translate(-50%,-50%) scale(0.2)", opacity: 0 },
+      { transform: "translate(-50%,-50%) scale(1)", opacity: 1, offset: 0.7 },
+      { transform: "translate(-50%,-50%) scale(0.85)", opacity: 0.9 },
+    ],
+    { duration: 450, delay: 120, easing: "ease-out", fill: "forwards" }
+  );
+  shot.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: 330, fill: "forwards" });
+
+  // 2) bırakış: kısa bir tel titremesi, ok fırlar
+  const release = 580, fly = 560;
+  setTimeout(() => {
+    sparks(tip.x, tip.y, 14, Math.PI * 1.4, 500);
+    bg.animate(
+      [{ transform: "translate(0,0)" }, { transform: "translate(-5px,2px)" }, { transform: "translate(3px,-1px)" }, { transform: "translate(0,0)" }],
+      { duration: 160, easing: "ease-out" }
+    );
+    for (let i = 1; i <= 8; i++) {
+      setTimeout(() => {
+        const p = Math.pow(i / 8, 2) * Math.min(dist, vw - tip.x + 40);
+        sparks(tip.x + Math.cos(ang) * p, tip.y + Math.sin(ang) * p, 3, 0.8, 380);
+      }, (fly / 8) * i);
+    }
+  }, release);
+  glow.animate([{ opacity: 0.9 }, { opacity: 0 }], { duration: 300, delay: release, fill: "forwards" });
+  move.animate([{ transform: "translateX(0)" }, { transform: `translateX(${dist}px)` }], {
+    duration: fly, delay: release, easing: "cubic-bezier(.55,0,.9,.6)", fill: "forwards",
+  });
+  trail.animate(
+    [{ transform: "scaleX(0)", opacity: 0.4 }, { transform: "scaleX(1)", opacity: 1, offset: 0.35 }, { transform: "scaleX(1)", opacity: 1 }],
+    { duration: fly, delay: release, easing: "ease-out", fill: "forwards" }
+  );
+
+  // 3) kamera okun peşinden sağa savrulur, altın parlama
+  const whip = release + 300;
+  bg.animate(
+    [
+      { transform: "translateX(0) scale(1)", filter: "blur(0)" },
+      { transform: "translateX(-9%) scale(1.08)", filter: "blur(7px)" },
+    ],
+    { duration: 650, delay: whip, easing: "cubic-bezier(.45,0,.8,.5)", fill: "forwards" }
+  );
+  flash.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, delay: whip + 330, easing: "ease-in", fill: "forwards" });
+
+  arrowIntro = { fx, bg };
+  return wait(whip + 700);
+}
+
+function finishArrowIntro() {
+  if (!arrowIntro) return;
+  const { fx, bg } = arrowIntro;
+  arrowIntro = null;
+  bg.getAnimations().forEach((a) => a.cancel());
+  el.loginScreen.classList.remove("launching");
+  const flash = fx.querySelector(".arrow-fx-flash");
+  flash.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 550, easing: "ease-out", fill: "forwards" })
+    .finished.then(() => fx.remove(), () => fx.remove());
+}
+
+function cancelArrowIntro() {
+  if (!arrowIntro) { el.loginScreen.classList.remove("launching"); return; }
+  const { fx, bg } = arrowIntro;
+  arrowIntro = null;
+  bg.getAnimations().forEach((a) => a.cancel());
+  fx.remove();
+  el.loginScreen.classList.remove("launching");
+}
+
 async function handleStart() {
   const username = el.usernameInput.value.trim();
   if (!username) {
@@ -770,6 +927,7 @@ async function handleStart() {
     bump(el.usernameInput);
     return;
   }
+  if (arrowIntro) return; // geçiş sürerken ikinci tıklama yok sayılır
   el.usernameInput.blur();
   tryLockLandscape();
   startMusic();
@@ -777,6 +935,7 @@ async function handleStart() {
   haptic(HAPTIC.tap);
   state.username = username;
   safeStorageSet("bilgi_akini_user", username);
+  const intro = playArrowIntro();
 
   try {
     const player = await api(`/player/${encodeURIComponent(username)}`);
@@ -790,9 +949,12 @@ async function handleStart() {
     state.currentEra = (state.eras.find((e) => e.key === "yukselis") || state.eras[0]).key;
 
     renderCharacterGrid();
+    await intro;
     showScreen(el.characterScreen);
+    finishArrowIntro();
   } catch (err) {
     /* api() bağlantı hatası ekranını zaten gösterdi */
+    cancelArrowIntro();
   }
 }
 
