@@ -3,7 +3,32 @@ modules = ["python-3.12", "nodejs-20", "web"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["iana-etc"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && env -u DATABASE_URL python -m gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app"
+waitForPort = 5000

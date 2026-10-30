@@ -1,0 +1,1 @@
+- [Imported database scope](imported-database-scope.md) — preserve SQLite for preview rather than adopting the automatically supplied database.
