@@ -1,9 +1,13 @@
-run = "cd backend && pip install -r requirements.txt && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app"
+run = "cd backend && python app.py"
 modules = ["python-3.12", "nodejs-20", "web"]
 
 [nix]
 channel = "stable-25_05"
 packages = ["iana-etc"]
+
+[deployment]
+build = ["sh", "-c", "pip install -r backend/requirements.txt"]
+run = ["sh", "-c", "cd backend && python app.py"]
 
 [[ports]]
 localPort = 5000
@@ -30,5 +34,5 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd backend && env -u DATABASE_URL python -m gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app"
+args = "cd backend && python app.py"
 waitForPort = 5000
