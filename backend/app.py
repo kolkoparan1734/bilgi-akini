@@ -5,9 +5,11 @@ Flask tabanlı REST API. Dünya haritası üzerindeki ülkeler, dönemler,
 tarihi olaylar (ve her olayın soruları) burada yönetilir.
 
 Veritabanı: Varsayılan olarak SQLite (hızlı test için) kullanır.
-MySQL'e geçmek için DATABASE_URL ortam değişkenini ayarla, örn:
-    DATABASE_URL=mysql+mysqlconnector://kullanici:sifre@localhost/bilgi_akini
+PostgreSQL için DATABASE_URL ortam değişkenini ayarla (Render otomatik sağlar).
 """
+
+import eventlet
+eventlet.monkey_patch()
 
 import os
 import random
@@ -26,11 +28,15 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fr
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 CORS(app)  # Mobil uygulama / farklı origin'lerden erişim için
-socketio = SocketIO(app, cors_allowed_origins="*")  # 2 kişilik gerçek zamanlı mod
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # --- Veritabanı Ayarı ---
 DEFAULT_SQLITE = "sqlite:///" + os.path.join(os.path.dirname(__file__), "bilgi_akini.db")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", DEFAULT_SQLITE)
+_db_url = os.environ.get("DATABASE_URL", DEFAULT_SQLITE)
+# Render'ın PostgreSQL URL'i "postgres://" ile gelir; SQLAlchemy "postgresql://" ister.
+if _db_url.startswith("postgres://"):
+    _db_url = _db_url.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
