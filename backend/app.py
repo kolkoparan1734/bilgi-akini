@@ -8,9 +8,6 @@ Veritabanı: Varsayılan olarak SQLite (hızlı test için) kullanır.
 PostgreSQL için DATABASE_URL ortam değişkenini ayarla (Render otomatik sağlar).
 """
 
-import eventlet
-eventlet.monkey_patch()
-
 import os
 import random
 import time
@@ -28,7 +25,7 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fr
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 CORS(app)  # Mobil uygulama / farklı origin'lerden erişim için
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # --- Veritabanı Ayarı ---
 DEFAULT_SQLITE = "sqlite:///" + os.path.join(os.path.dirname(__file__), "bilgi_akini.db")

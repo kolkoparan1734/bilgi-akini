@@ -1,11 +1,11 @@
-run = "cd backend && pip install -r requirements.txt && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app"
+run = "cd backend && python app.py"
 
 [nix]
 channel = "stable-24_05"
 
 [deployment]
 build = ["sh", "-c", "pip install -r backend/requirements.txt"]
-run = ["sh", "-c", "cd backend && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT app:app"]
+run = ["sh", "-c", "cd backend && python app.py"]
 
 [[ports]]
 localPort = 5000
