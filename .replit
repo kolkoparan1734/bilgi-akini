@@ -1,0 +1,8 @@
+run = "cd backend && pip install -r requirements.txt && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app"
+
+[nix]
+channel = "stable-24_05"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
